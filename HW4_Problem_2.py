@@ -27,12 +27,12 @@ class RNNLayer(nn.Module):
         super(RNNLayer, self).__init__()
         self.hidden_size = hidden_size
         self.input_size = input_size
-        self.W_xh = 
-        self.W_hh = 
-        self.activation =
+        self.W_xh = nn.Parameter(torch.randn(input_size, hidden_size) * 0.01)
+        self.W_hh = nn.Parameter(torch.randn(hidden_size, hidden_size) * 0.01)
+        self.activation = torch.tanh
 
     def forward(self, x, hidden):
-        hidden = 
+        hidden = self.activation(x @ self.W_xh + hidden @ self.W_hh)
         return hidden
 
 # Define a sequence prediction model using the Vanilla RNN
@@ -40,22 +40,23 @@ class SequenceModel(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(SequenceModel, self).__init__()
         self.hidden_size = hidden_size
-        self.rnn = RNNLayer( , )
-        self.linear = nn.Linear( , )
+        self.rnn = RNNLayer(input_size, hidden_size)
+        self.linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, input_seq, seq_lengths):
-        batch_size = 
-        last_hidden = torch.zeros( , ).to(device)
+        batch_size = len(input_seq)
+        last_hidden = torch.zeros(batch_size, self.hidden_size).to(device)
 
         for b in range(batch_size):
             hidden = torch.zeros( ).to(device)
 
-            seq_length =             
+            seq_length =  seq_lengths[b]  
+
             for t in range(seq_length):
-                hidden = self.rnn(input_seq[ ][ ], hidden)
+                hidden = self.rnn(input_seq[b][t], hidden)
             
             # Store the last hidden state in the output tensor
-            last_hidden[ ] = 
+            last_hidden[b] = hidden
 
         output = self.linear( )
         return output
@@ -66,22 +67,22 @@ class SequenceModelFixedLen(nn.Module):
         super(SequenceModelFixedLen, self).__init__()
         self.hidden_size = hidden_size
         self.seq_len = seq_len
-        self.rnn_layers = [RNNLayer( , ) for _ in range( )]
-        self.linear = nn.Linear( , )
+        self.rnn_layers = [RNNLayer(input_size, hidden_size) for _ in range(seq_len)]
+        self.linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, input_seq, seq_lengths):
-        batch_size = 
+        batch_size = len(input_seq)
         last_hidden = torch.zeros(batch_size, self.hidden_size).to(device)
 
         for b in range(batch_size):
             hidden = torch.zeros( ).to(device)
 
-            seq_length = min( , )            
+            seq_length = min(0,seq_lengths[b]) ######################################## I think???           
             for t in range(seq_length):
-                hidden = 
+                hidden = self.rnn_layers[t](input_seq[b][t], hidden)
             
             # Store the last hidden state in the output tensor
-            last_hidden[ ] = 
+            last_hidden[ b] = hidden
 
         output = self.linear()
         return output
@@ -101,13 +102,13 @@ X_train, X_test, y_train, y_test = loadData()
 device = y_train.device
 
 # Create the model using min length input
-seq_lengths = [seq.shape[0] for seq in inputs]
+seq_lengths = [seq.shape[0] for seq in X_train]
 
 # Training loop
 def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
-
+    print("here!")
     for epoch in range(num_epochs):
         for i in range(0, len(X_train), batch_size):
             inputs = X_train[i:i+batch_size]
