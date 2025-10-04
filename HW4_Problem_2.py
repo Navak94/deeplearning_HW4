@@ -45,10 +45,10 @@ class SequenceModel(nn.Module):
 
     def forward(self, input_seq, seq_lengths):
         batch_size = len(input_seq)
-        last_hidden = torch.zeros(batch_size, self.hidden_size).to(device)
+        last_hidden = torch.zeros(batch_size, self.hidden_size, device=device)
 
         for b in range(batch_size):
-            hidden = torch.zeros( ).to(device)
+            hidden = torch.zeros(self.hidden_size, device=device)
 
             seq_length =  seq_lengths[b]  
 
@@ -58,7 +58,7 @@ class SequenceModel(nn.Module):
             # Store the last hidden state in the output tensor
             last_hidden[b] = hidden
 
-        output = self.linear( )
+        output = self.linear(last_hidden)
         return output
 
 # Define a sequence prediction model for fixed length sequences, BUT NO SHARED WEIGHTS
@@ -67,24 +67,24 @@ class SequenceModelFixedLen(nn.Module):
         super(SequenceModelFixedLen, self).__init__()
         self.hidden_size = hidden_size
         self.seq_len = seq_len
-        self.rnn_layers = [RNNLayer(input_size, hidden_size) for _ in range(seq_len)]
+        self.rnn_layers = nn.ModuleList([RNNLayer(input_size, hidden_size) for _ in range(seq_len)])
         self.linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, input_seq, seq_lengths):
         batch_size = len(input_seq)
-        last_hidden = torch.zeros(batch_size, self.hidden_size).to(device)
+        last_hidden = torch.zeros(batch_size, self.hidden_size, device=device)
 
         for b in range(batch_size):
             hidden = torch.zeros( ).to(device)
 
-            seq_length = min(0,seq_lengths[b]) ######################################## I think???           
+            seq_length = min(self.seq_len, seq_lengths[b]) ######################################## I think???           
             for t in range(seq_length):
                 hidden = self.rnn_layers[t](input_seq[b][t], hidden)
             
             # Store the last hidden state in the output tensor
-            last_hidden[ b] = hidden
+            last_hidden[b] = hidden
 
-        output = self.linear()
+        output = self.linear(last_hidden)
         return output
 
 
@@ -108,12 +108,19 @@ seq_lengths = [seq.shape[0] for seq in X_train]
 def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
     criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    print("here!")
+    print("training!")
     for epoch in range(num_epochs):
+
+        print("epoch ", epoch)
+
         for i in range(0, len(X_train), batch_size):
             inputs = X_train[i:i+batch_size]
             targets = y_train[i:i+batch_size]
             lengths = seq_lengths[i:i+batch_size]
+
+            #GPU related stuff to ensure it picks the right device
+            inputs  = [x.to(device) for x in inputs]
+            targets = targets.to(device)
 
             optimizer.zero_grad()
             outputs = model(inputs, lengths)
@@ -125,6 +132,25 @@ def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
     return model
 
 # initialize and train Vanilla RNN
+if __name__ == "__main__":
+    ###################################################revise
+    X_train, X_test, y_train, y_test = loadData()
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda") # pick my gpu
+        print("cuda selected!")
+    else:
+        device = torch.device("cpu")
+        print("cpu selected. no visible gpu")
+
+    print("Vanilla RNN . . . . .")
+    vanilla = SequenceModel(input_size, hidden_size, output_size).to(device)
+    train_vanilla_RNN =train(vanilla, num_epochs, learning_rate, batch_size, X_train, y_train, seq_lengths)
+   
+
+    print ("training fixed length model")
+    Lmin = min(seq_lengths)
+
 
 # initialize and train Sequential NN fixing #timesteps to the minimum sequence length
 
