@@ -88,6 +88,18 @@ class SequenceModelFixedLen(nn.Module):
         return output
 
 
+
+class PaddedModel(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, seq_len_max):
+        super(PaddedModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.seq_len_max = seq_len_max
+        self.rnn_layers = nn.ModuleList([RNNLayer(input_size, hidden_size) for _ in range(seq_len_max)])
+        self.linear = nn.Linear(hidden_size, output_size)
+
+        def forward(self, padded_batch, lengths):
+            ####i think i have to basically do what was done above but again
+
 # Define hyperparameters and other settings
 input_size = 10  # Replace with the actual dimension of your input features
 hidden_size = 64
@@ -133,7 +145,7 @@ def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
 
 # initialize and train Vanilla RNN
 if __name__ == "__main__":
-    ####################################################################################################################################revise
+    ####################################################################################################################################needs revision
     X_train, X_test, y_train, y_test = loadData()
 
     if torch.cuda.is_available():
@@ -148,7 +160,7 @@ if __name__ == "__main__":
     train_vanilla_RNN =train(vanilla, num_epochs, learning_rate, batch_size, X_train, y_train, seq_lengths)
    
 
-    print ("training fixed length truncated model")
+    print ("fixed length truncated model....")
 
     Lmin = min(seq_lengths)
     X_train_trunc = []
