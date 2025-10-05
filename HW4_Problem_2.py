@@ -75,7 +75,7 @@ class SequenceModelFixedLen(nn.Module):
         last_hidden = torch.zeros(batch_size, self.hidden_size, device=device)
 
         for b in range(batch_size):
-            hidden = torch.zeros( ).to(device)
+            hidden = torch.zeros(self.hidden_size, device=device).to(device)
 
             seq_length = min(self.seq_len, seq_lengths[b]) ######################################## I think???           
             for t in range(seq_length):
@@ -133,7 +133,7 @@ def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
 
 # initialize and train Vanilla RNN
 if __name__ == "__main__":
-    ###################################################revise
+    ####################################################################################################################################revise
     X_train, X_test, y_train, y_test = loadData()
 
     if torch.cuda.is_available():
@@ -148,9 +148,21 @@ if __name__ == "__main__":
     train_vanilla_RNN =train(vanilla, num_epochs, learning_rate, batch_size, X_train, y_train, seq_lengths)
    
 
-    print ("training fixed length model")
-    Lmin = min(seq_lengths)
+    print ("training fixed length truncated model")
 
+    Lmin = min(seq_lengths)
+    X_train_trunc = []
+
+    for x in X_train:
+         truncated_seq = x[:Lmin]
+         X_train_trunc.append(truncated_seq) 
+
+    seq_lengths_trunc = [Lmin] * len(X_train_trunc)
+
+
+    trunc = SequenceModelFixedLen(input_size, hidden_size, output_size, seq_len=Lmin).to(device)
+    Train_trunc = train(trunc, num_epochs, learning_rate, batch_size, X_train_trunc, y_train, seq_lengths_trunc)
+###################################################################################################################################
 
 # initialize and train Sequential NN fixing #timesteps to the minimum sequence length
 
