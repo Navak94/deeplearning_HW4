@@ -97,7 +97,7 @@ class PaddedModel(nn.Module):
         self.rnn_layers = nn.ModuleList([RNNLayer(input_size, hidden_size) for _ in range(seq_len_max)])
         self.linear = nn.Linear(hidden_size, output_size)
 
-        def forward(self, padded_batch, lengths):
+    def forward(self, padded_batch, lengths):
             ####i think i have to basically do what was done above but again
 
 # Define hyperparameters and other settings
