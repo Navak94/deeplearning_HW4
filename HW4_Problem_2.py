@@ -112,7 +112,7 @@ class PaddedModel(nn.Module):
 
         last_hidden = torch.stack(hidden, dim=0)
         return self.linear(last_hidden)
-            ####i think i have to basically do what was done above but again
+
 
 # Define hyperparameters and other settings
 input_size = 10  # Replace with the actual dimension of your input features
