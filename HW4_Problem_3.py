@@ -14,11 +14,13 @@ We recommend you to save files in your Google Drive to avoid having to download 
 """
 
 # Commented out IPython magic to ensure Python compatibility.
-from google.colab import drive
-drive.mount('/content/gdrive/')
+
+#from google.colab import drive
+#drive.mount('/content/gdrive/')
 
 # Change the code below to whichever folder you would like your directory to be at. Remove # and run.
-path = '/content/gdrive/MyDrive/medclaim_detection'
+path = '/home/navak/Desktop/git/deeplearning_HW4'
+
 # %cd {path}
 
 """## Import libraries
@@ -32,6 +34,7 @@ import os
 import re
 from typing import Dict
 import itertools
+import requests
 
 import numpy as np
 import pandas as pd
@@ -124,6 +127,47 @@ def compute_metrics(pred) -> Dict[str, float]:
     metrics['f1'] = float(np.mean([metrics['f1_class_0'], metrics['f1_class_1']]))
     return metrics
 
+
+#just here for troubleshooting 
+def compute_metrics_debug(eval_pred) -> Dict[str, float]:
+    
+    if isinstance(eval_pred, tuple):
+        predictions, labels = eval_pred
+    else:
+        predictions, labels = eval_pred.predictions, eval_pred.label_ids
+
+ 
+    if isinstance(predictions, tuple):
+        predictions = predictions[0]
+
+    predictions = np.asarray(predictions)
+    labels = np.asarray(labels).reshape(-1)
+
+    if predictions.ndim == 2 and predictions.shape[-1] > 1:
+        preds = np.argmax(predictions, axis=-1)
+    else:
+        logits_1d = predictions.reshape(-1)
+        probs = 1.0 / (1.0 + np.exp(-logits_1d))
+        preds = (probs >= 0.5).astype(int)
+
+
+    assert preds.shape[0] == labels.shape[0], f"preds {preds.shape} vs labels {labels.shape}"
+
+    acc = accuracy_score(labels, preds)
+    p, r, f1, _ = precision_recall_fscore_support(
+        labels, preds, labels=[0, 1], average='macro', zero_division=0
+    )
+    return {
+        'accuracy': float(acc),
+        'precision': float(p),
+        'recall': float(r),
+        'f1': float(f1),
+    }
+
+
+
+
+
 def load_pretrained_and_finetune(args):
     nltk.download('stopwords')
     nltk.download('wordnet')
@@ -176,10 +220,10 @@ def load_pretrained_and_finetune(args):
     # END YOUR CODE HERE
 
     # Kepe only the necessary columns in each dataset
-    keep_cols = ['input_ids', 'attention_mask', 'labels']
-    train_ds = train_ds.remove_columns([c for c in train_ds.column_names if c not in keep_cols]).with_format('torch')
-    val_ds = val_ds.remove_columns([c for c in val_ds.column_names if c not in keep_cols]).with_format('torch')
-    test_ds = test_ds.remove_columns([c for c in test_ds.column_names if c not in keep_cols]).with_format('torch')
+    #keep_cols = ['input_ids', 'attention_mask', 'labels']
+    #train_ds = train_ds.remove_columns([c for c in train_ds.column_names if c not in keep_cols]).with_format('torch')
+    #val_ds = val_ds.remove_columns([c for c in val_ds.column_names if c not in keep_cols]).with_format('torch')
+    #test_ds = test_ds.remove_columns([c for c in test_ds.column_names if c not in keep_cols]).with_format('torch')
 
     # We'll create models inside the grid loop; keep tokenizer ready
 
@@ -187,7 +231,6 @@ def load_pretrained_and_finetune(args):
     if hasattr(torch, 'cuda') and torch.cuda.is_available():
         device = 'cuda'
     else:
-        # MPS (Apple Silicon) support
         try:
             if getattr(torch, 'has_mps', False) and torch.backends.mps.is_available():
                 device = 'mps'
@@ -196,7 +239,6 @@ def load_pretrained_and_finetune(args):
         except Exception:
             device = 'cpu'
 
-    # Ensure Trainer knows whether to use CUDA
     no_cuda = False if device in ('cuda', 'mps') else True
 
     # Note: model instances are created per-trial inside the grid search loop below.
@@ -206,23 +248,44 @@ def load_pretrained_and_finetune(args):
     best_params = None
 
     # Q4: Implement grid search for at least one hyperparameter
-
+##################################################################################################################################3needs a LOT of revision omfg
     # Build hyperparameter lists
+    best_params = None
+    best_score = -float('inf')
+
+    if args.grid_search:
+        lrs = [0.001, 0.0001, 0.005, 0.00005]
+        bss = [8, 16,32]
+        wds = [0.0, 0.01,0.03]
+        nes = [1,2, 3]
+        search_space = itertools.product(lrs, bss, wds, nes)
+    else:
+        search_space = [(args.learning_rate, args.batch_size, args.weight_decay, args.num_train_epochs)]
+
     # BEGIN YOUR CODE HERE (~1-7 lines)
+
+    #######Tom this may trip up on you idk
+    #make sure the GPU is selected, otherwise default to CPU  
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
     # PRO TIP: you can use itertools.product to create a master list of all combos for grid search
 
-    for # COMPLETE THIS LINE
-        logger.info('WHAT DO YOU WANT TO LOG?')
+    for lr, bs, wd, ne in search_space:# COMPLETE THIS LINE
+        logger.info(f"Trial: lr={lr}, bs={bs}, wd={wd}, epochs={ne}")
+
         # instantiate fresh pretrained model for each trial
         # NOTE: if num_labels=2, CrossEntropy is assumed by default Trainer;
         # if num_labels=1, you will have to implement a CustomTrainer to override MSE as loss
-        model = # COMPLETE THIS LINE
+        model = DistilBertForSequenceClassification.from_pretrained(
+        args.model_name, num_labels=2
+    )
 
         # Freeze base params and unfreeze classifier layers
         for name, p in model.named_parameters():
             p.requires_grad = False
         for name, p in model.named_parameters():
-            if # COMPLETE THIS LINE
+            if name.startswith('classifier') or 'pre_classifier' in name:
                 p.requires_grad = True
 
         # trial output dir
@@ -230,21 +293,40 @@ def load_pretrained_and_finetune(args):
         os.makedirs(trial_output_dir, exist_ok=True)
 
         training_args = TrainingArguments(
-            # INCLUDE RELEVANT ARGUMENTS (~5-10 LINES)
-            no_cuda=no_cuda,
-            report_to='none',
+            output_dir=trial_output_dir,
+            per_device_train_batch_size=bs,
+            per_device_eval_batch_size=bs,
+            learning_rate=lr,
+            num_train_epochs=ne,
+            weight_decay=wd,
+            logging_dir=os.path.join(trial_output_dir, "logs"),  # safe on old & new
         )
 
         # initialize the Trainer (~5 lines) or CustomTrainer (~6-8 lines)
-        trainer = # COMPLETE THIS LINE
+        trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_ds,
+        eval_dataset=val_ds,
+        compute_metrics=compute_metrics_debug
+     # COMPLETE THIS LINE
         )
-
+        model.to(device)
         # move model to device if possible
         # BEGIN YOUR CODE HERE (~1-4 lines)
+        trainer.train()
+        metrics = trainer.evaluate(eval_dataset=val_ds)
+        score = metrics.get('eval_f1', -float('inf'))
+
+
         # END YOUR CODE HERE
 
         # train, evaluate, compute score, update best score
         # BEGIN YOUR CODE HERE (~6-9 lines)
+        if score > best_score:
+            best_score = score
+            best_params = {'lr': lr, 'bs': bs, 'wd': wd, 'epochs': ne}
+            print()
         # END YOUR CODE HERE
 
     # END YOUR CODE HERE
@@ -252,27 +334,59 @@ def load_pretrained_and_finetune(args):
     if best_params is None:
         raise RuntimeError('Grid search failed to produce any candidate best params')
 
-    logger.info('Best hyperparameters from grid search: %s (score=%s)', best_params, best_score)
+    logger.info(best_params)
 
     # Q5: Final training on train+val with best hyperparameters
     # instantiate pretrained model and freeze appropriate layers
     # BEGIN YOUR CODE HERE (~6 lines)
-    # END YOUR CODE HERE
+    model = DistilBertForSequenceClassification.from_pretrained(args.model_name, num_labels=2)
+
+    for name, p in model.named_parameters():
+        p.requires_grad = False
+    for name, p in model.named_parameters():
+        if name.startswith('classifier') or 'pre_classifier' in name:
+            p.requires_grad = True
+
+    # END YOUR CODE HE RE
 
     # combine train_ds and val_df for final training (i.e., original train_df)
     # BEGIN YOUR CODE HERE (~4 lines)
+    from datasets import concatenate_datasets
+    trainval_ds = concatenate_datasets([train_ds, val_ds]).with_format('torch')
+    final_out_dir = os.path.join(args.output_dir, 'final')
+    os.makedirs(final_out_dir, exist_ok=True)
     # END YOUR CODE HERE
 
     # set the training arguments
     # BEGIN YOUR CODE HERE (~9-14 lines)
+    final_args = TrainingArguments(
+        output_dir=final_out_dir,
+        per_device_train_batch_size=best_params['bs'],
+        per_device_eval_batch_size=best_params['bs'],
+        learning_rate=best_params['lr'],
+        num_train_epochs=best_params['epochs'],
+        weight_decay=best_params['wd'],
+        logging_dir=os.path.join(final_out_dir, "logs"),
+    )
     # END YOUR CODE HERE
 
     # initialize the Trainer (~5 lines) or CustomTrainer (~6-8 lines)
+    final_trainer = Trainer(
+        model=model,
+        args=final_args,
+        train_dataset=trainval_ds,
+        eval_dataset=eval_ds,          # held-out test split
+        compute_metrics=compute_metrics_debug
+    )
 
+    final_trainer.train()
+    test_metrics = final_trainer.evaluate(eval_dataset=eval_ds)
+    logger.info(f'Final TEST metrics: {test_metrics}')
+    final_trainer.save_model(args.output_dir)
     # move model to device if possible
     # BEGIN YOUR CODE HERE (~1-4 lines)
     # END YOUR CODE HERE
-
+ 
     # train, evaluate, save model
     # BEGIN YOUR CODE HERE (~3 lines)
     # END YOUR CODE HERE
