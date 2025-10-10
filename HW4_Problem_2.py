@@ -131,6 +131,24 @@ device = y_train.device
 seq_lengths = [seq.shape[0] for seq in X_train]
 
 
+all_indices = np.arange(len(X_train))
+np.random.shuffle(all_indices)
+
+train_cutoff = int(0.8 * len(all_indices))
+train_indices = all_indices[:train_cutoff]
+val_indices   = all_indices[train_cutoff:]
+
+
+X_train_split = []
+for i in train_indices:
+    X_train_split.append(X_train[i])
+y_train_split = y_train[train_indices]
+
+
+X_val_split = []
+for i in val_indices:
+    X_val_split.append(X_train[i])
+y_val_split = y_train[val_indices]
 
 # Training loop
 def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
@@ -155,7 +173,8 @@ def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
-
+        MSE_val = mse_padded(model, X_val_split, y_val_split)
+        print("MSE ", MSE_val)
         print(loss)
     return model
 
@@ -179,7 +198,58 @@ def train_padded(model, num_epochs, lr, batch_size, X_train, y_train):
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
+        MSE_val = mse_padded(model, X_val_split, y_val_split)
+        print("Padded MSE ", MSE_val)
         print(loss.item())   
+
+##################################################3revise the MSE
+def mse(model, inputs, y):
+    model.eval()
+    crit = nn.MSELoss()
+    preds = []
+    bs = 64
+    lengths = []
+
+    for x in inputs:
+        lengths.append(len(x))
+
+    for i in range(0, len(inputs), bs):
+
+        batch = []
+        for x in inputs[i:i+bs]:
+            batch.append(x.to(device))
+
+        lens  = lengths[i:i+bs]
+        preds.append(model(batch, lens))
+
+    preds = torch.cat(preds, dim=0)
+
+    return crit(preds, y.to(device)).item()
+
+
+
+def mse_padded(model, inputs, y):
+    model.eval()
+    crit = nn.MSELoss()
+    preds = []
+    bs = 64
+
+    lengths = []
+    for x in inputs:
+        lengths.append(len(x))
+
+    for i in range(0, len(inputs), bs):
+        batch = []
+        for x in inputs[i:i+bs]:
+            batch.append(x.to(device))
+
+        lens = lengths[i:i+bs]          
+        padded = pad_sequence(batch, batch_first=True)
+
+        preds.append(model(padded, lens))
+
+    preds = torch.cat(preds, dim=0)
+    return crit(preds, y.to(device)).item()
 
 
 
@@ -194,6 +264,11 @@ if __name__ == "__main__":
     else:
         device = torch.device("cpu")
         print("cpu selected. no visible gpu")
+
+
+    
+    seq_lengths_tr  = [len(x) for x in X_train_split]
+    seq_lengths_val = [len(x) for x in X_val_split]
 
     print("Vanilla RNN . . . . .")
     vanilla = SequenceModel(input_size, hidden_size, output_size).to(device)
@@ -224,9 +299,20 @@ if __name__ == "__main__":
     train_padded(padded_model, num_epochs, learning_rate, batch_size, X_train, y_train)
 
 
+    print("testing each")
+    vanilla_test = mse(vanilla, X_test, y_test)
 
+    trunc_test = []
 
+    for x in X_test:
+        truncated_seq = x[:Lmin]
+        trunc_test.append(truncated_seq)
 
+    test_trunc   = mse(trunc, trunc_test, y_test)
+
+    padded_test  = mse_padded(padded_model, X_test, y_test)
+
+    print("vanilla test!!  ", vanilla_test , "truncated test!! " , test_trunc , "Padded Test!! ", padded_test)
 
 
 
