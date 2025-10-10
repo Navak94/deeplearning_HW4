@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.nn.utils.rnn import pad_sequence
 import numpy as np
 import random
 
@@ -98,6 +99,19 @@ class PaddedModel(nn.Module):
         self.linear = nn.Linear(hidden_size, output_size)
 
     def forward(self, padded_batch, lengths):
+        B, T, _ = padded_batch.shape
+        device = padded_batch.device
+
+        hidden = [torch.zeros(self.hidden_size, device=device) for _ in range(B)]
+
+        for t in range(T):
+            for b in range(B):
+                if t < lengths[b]:
+
+                    hidden[b] = self.rnn_layers[t](padded_batch[b, t], hidden[b])
+
+        last_hidden = torch.stack(hidden, dim=0)
+        return self.linear(last_hidden)
             ####i think i have to basically do what was done above but again
 
 # Define hyperparameters and other settings
@@ -115,6 +129,8 @@ device = y_train.device
 
 # Create the model using min length input
 seq_lengths = [seq.shape[0] for seq in X_train]
+
+
 
 # Training loop
 def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
@@ -143,9 +159,33 @@ def train(model, num_epochs, lr, batch_size, X_train, y_train, seq_lengths):
         print(loss)
     return model
 
+def train_padded(model, num_epochs, lr, batch_size, X_train, y_train):
+    model.train()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+
+    print("training padded!")
+
+    for epoch in range(num_epochs):
+        print("epoch ",epoch)
+        for i in range(0, len(X_train), batch_size):
+            batch = X_train[i:i+batch_size]
+            targets = y_train[i:i+batch_size].to(device)
+
+            lengths = [len(s) for s in batch]
+            padded = pad_sequence(batch, batch_first=True).to(device)
+            optimizer.zero_grad()
+            outputs = model(padded, lengths)
+            loss = criterion(outputs, targets)
+            loss.backward()
+            optimizer.step()
+        print(loss.item())   
+
+
+
 # initialize and train Vanilla RNN
 if __name__ == "__main__":
-    ####################################################################################################################################needs revision
+    ################################################################################################needs revision
     X_train, X_test, y_train, y_test = loadData()
 
     if torch.cuda.is_available():
@@ -161,6 +201,7 @@ if __name__ == "__main__":
    
 
     print ("fixed length truncated model....")
+    
 
     Lmin = min(seq_lengths)
     X_train_trunc = []
@@ -174,6 +215,24 @@ if __name__ == "__main__":
 
     trunc = SequenceModelFixedLen(input_size, hidden_size, output_size, seq_len=Lmin).to(device)
     Train_trunc = train(trunc, num_epochs, learning_rate, batch_size, X_train_trunc, y_train, seq_lengths_trunc)
+
+
+
+    print("padded model ....")
+    Lmax = max(seq_lengths)
+    padded_model = PaddedModel(input_size, hidden_size, output_size, seq_len_max=Lmax).to(device)
+    train_padded(padded_model, num_epochs, learning_rate, batch_size, X_train, y_train)
+
+
+
+
+
+
+
+
+
+
+
 ###################################################################################################################################
 
 # initialize and train Sequential NN fixing #timesteps to the minimum sequence length
