@@ -141,6 +141,11 @@ def load_pretrained_and_finetune(args):
 
     # Q2: split the code in train, val and eval (test) sets stratified by classes
     # BEGIN YOUR CODE HERE (~2 lines)
+    ###########################################################################################################3revise
+    train_val_df, test_df = train_test_split(
+    df, test_size=args.test_size, stratify=df['labels'], random_state=args.seed)
+    train_df, val_df = train_test_split(train_val_df,test_size=args.val_size / (1.0 - args.test_size),stratify=train_val_df['labels'],random_state=args.seed)
+    #############################################################################################################333
     # END YOUR CODE HERE
 
     tokenizer = DistilBertTokenizerFast.from_pretrained(args.model_name)
@@ -151,6 +156,23 @@ def load_pretrained_and_finetune(args):
     # Q3: Convert sets to HuggingFace Dataset and tokenize using function tokenize_batch
     # Use variable names: train_ds, val_ds, eval_ds
     # BEGIN YOUR CODE HERE (~6 lines)
+#####################################################################################################################################################3    
+    train_ds = Dataset.from_pandas(train_df.reset_index(drop=True))
+    val_ds   = Dataset.from_pandas(val_df.reset_index(drop=True))
+    eval_ds  = Dataset.from_pandas(test_df.reset_index(drop=True))  # "eval_ds" = test split
+
+    train_ds = train_ds.map(tokenize_batch, batched=True)
+    val_ds   = val_ds.map(tokenize_batch, batched=True)
+    eval_ds  = eval_ds.map(tokenize_batch, batched=True)
+
+    # keep only the tensor columns the Trainer needs
+    keep_cols = ['input_ids', 'attention_mask', 'labels']
+    train_ds = train_ds.remove_columns([c for c in train_ds.column_names if c not in keep_cols]).with_format('torch')
+    val_ds   = val_ds.remove_columns([c for c in val_ds.column_names if c not in keep_cols]).with_format('torch')
+    eval_ds  = eval_ds.remove_columns([c for c in eval_ds.column_names if c not in keep_cols]).with_format('torch')
+####################################################################################################################################################
+
+
     # END YOUR CODE HERE
 
     # Kepe only the necessary columns in each dataset
@@ -263,10 +285,24 @@ parser.add_argument('--data-dir', type=str, required=True, help='Path to CSV wit
 parser.add_argument('--output-dir', type=str, default='finetuned', help='Where to save model and tokenizer')
 parser.add_argument('--model-name', type=str, default='distilbert-base-uncased', help='Pretrained model name')
 # Q1. Add relevant arguments
+
+
+parser.add_argument('--max-length', type=int, default=128, help='Max token length')
+parser.add_argument('--batch-size', type=int, default=16, help='Per-device batch size')
+parser.add_argument('--learning-rate', type=float, default=2e-5, help='LR (used if not grid-searching)')
+parser.add_argument('--num-train-epochs', type=int, default=3, help='Epochs (used if not grid-searching)')
+parser.add_argument('--weight-decay', type=float, default=0.01, help='AdamW weight decay')
+parser.add_argument('--val-size', type=float, default=0.15, help='Validation fraction')
+parser.add_argument('--test-size', type=float, default=0.15, help='Test fraction')
+parser.add_argument('--seed', type=int, default=42, help='Random seed')
+parser.add_argument('--eval-steps', type=int, default=100, help='Evaluate every N steps')
+parser.add_argument('--logging-steps', type=int, default=50, help='Log every N steps')
+parser.add_argument('--grid-search', action='store_true', help='Enable grid search over hyperparams')
+
 # BEGIN YOUR CODE HERE (~5-15 lines)
 # END YOUR CODE HERE
 
-args = parser.parse_args(['--data-dir','data'] # EDIT THIS LINE TO PLAY WITH NON-DEFAULT ARGS
+args = parser.parse_args() # EDIT THIS LINE TO PLAY WITH NON-DEFAULT ARGS
 print(args)
 
 # download file if it doesn't exist yet
