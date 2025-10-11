@@ -671,6 +671,354 @@ documentation. Note: Be sure to clearly explain your implementation,
 provide code comments, and present your results in a well-organized
 manner in the report.
 
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{Answer}\label{answer-1}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# connect to google drive}
+\ImportTok{from}\NormalTok{ google.colab }\ImportTok{import}\NormalTok{ drive}
+\NormalTok{drive.mount(}\StringTok{\textquotesingle{}/content/drive/\textquotesingle{}}\NormalTok{)}
+
+\NormalTok{path }\OperatorTok{=} \StringTok{\textquotesingle{}/content/drive/MyDrive/\textquotesingle{}}
+
+\ImportTok{import}\NormalTok{ torch}
+\ImportTok{import}\NormalTok{ torch.nn }\ImportTok{as}\NormalTok{ nn}
+\ImportTok{import}\NormalTok{ torch.optim }\ImportTok{as}\NormalTok{ optim}
+\ImportTok{from}\NormalTok{ torch.nn.utils.rnn }\ImportTok{import}\NormalTok{ pad\_sequence}
+\ImportTok{import}\NormalTok{ numpy }\ImportTok{as}\NormalTok{ np}
+\ImportTok{import}\NormalTok{ random}
+\ImportTok{import}\NormalTok{ os}
+\NormalTok{os.chdir(path)}
+
+
+\CommentTok{\# load training and test data}
+\KeywordTok{def}\NormalTok{ loadData():}
+\NormalTok{    X\_train }\OperatorTok{=}\NormalTok{ np.load(}\StringTok{\textquotesingle{}X\_train.npy\textquotesingle{}}\NormalTok{,allow\_pickle}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+\NormalTok{    y\_train }\OperatorTok{=}\NormalTok{ np.load(}\StringTok{\textquotesingle{}y\_train.npy\textquotesingle{}}\NormalTok{,allow\_pickle}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+\NormalTok{    X\_test }\OperatorTok{=}\NormalTok{ np.load(}\StringTok{\textquotesingle{}X\_test.npy\textquotesingle{}}\NormalTok{,allow\_pickle}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+\NormalTok{    y\_test }\OperatorTok{=}\NormalTok{ np.load(}\StringTok{\textquotesingle{}y\_test.npy\textquotesingle{}}\NormalTok{,allow\_pickle}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+
+\NormalTok{    X\_train }\OperatorTok{=}\NormalTok{ [torch.Tensor(x) }\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ X\_train]  }\CommentTok{\# List of Tensors (SEQ\_LEN[i],INPUT\_DIM) i=0..NUM\_SAMPLES{-}1}
+\NormalTok{    X\_test }\OperatorTok{=}\NormalTok{ [torch.Tensor(x) }\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ X\_test]  }\CommentTok{\# List of Tensors (SEQ\_LEN[i],INPUT\_DIM)}
+\NormalTok{    y\_train }\OperatorTok{=}\NormalTok{ torch.Tensor(y\_train) }\CommentTok{\# (NUM\_SAMPLES,1)}
+\NormalTok{    y\_test }\OperatorTok{=}\NormalTok{ torch.Tensor(y\_test) }\CommentTok{\# (NUM\_SAMPLES,1)}
+
+    \ControlFlowTok{return}\NormalTok{ X\_train, X\_test, y\_train, y\_test}
+
+
+\CommentTok{\# Define a Vanilla RNN layer by hand}
+\KeywordTok{class}\NormalTok{ RNNLayer(nn.Module):}
+    \KeywordTok{def} \FunctionTok{\_\_init\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, input\_size, hidden\_size):}
+        \BuiltInTok{super}\NormalTok{(RNNLayer, }\VariableTok{self}\NormalTok{).}\FunctionTok{\_\_init\_\_}\NormalTok{()}
+        \VariableTok{self}\NormalTok{.hidden\_size }\OperatorTok{=}\NormalTok{ hidden\_size}
+        \VariableTok{self}\NormalTok{.input\_size }\OperatorTok{=}\NormalTok{ input\_size}
+        \VariableTok{self}\NormalTok{.W\_xh }\OperatorTok{=}\NormalTok{ nn.Parameter(torch.randn(input\_size, hidden\_size) }\OperatorTok{*} \FloatTok{0.01}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.W\_hh }\OperatorTok{=}\NormalTok{ nn.Parameter(torch.randn(hidden\_size, hidden\_size) }\OperatorTok{*} \FloatTok{0.01}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.activation }\OperatorTok{=}\NormalTok{ torch.tanh}
+
+    \KeywordTok{def}\NormalTok{ forward(}\VariableTok{self}\NormalTok{, x, hidden):}
+\NormalTok{        hidden }\OperatorTok{=} \VariableTok{self}\NormalTok{.activation(x }\OperatorTok{@} \VariableTok{self}\NormalTok{.W\_xh }\OperatorTok{+}\NormalTok{ hidden }\OperatorTok{@} \VariableTok{self}\NormalTok{.W\_hh)}
+        \ControlFlowTok{return}\NormalTok{ hidden}
+
+\CommentTok{\# Define a sequence prediction model using the Vanilla RNN}
+\KeywordTok{class}\NormalTok{ SequenceModel(nn.Module):}
+    \KeywordTok{def} \FunctionTok{\_\_init\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, input\_size, hidden\_size, output\_size):}
+        \BuiltInTok{super}\NormalTok{(SequenceModel, }\VariableTok{self}\NormalTok{).}\FunctionTok{\_\_init\_\_}\NormalTok{()}
+        \VariableTok{self}\NormalTok{.hidden\_size }\OperatorTok{=}\NormalTok{ hidden\_size}
+        \VariableTok{self}\NormalTok{.rnn }\OperatorTok{=}\NormalTok{ RNNLayer(input\_size, hidden\_size)}
+        \VariableTok{self}\NormalTok{.linear }\OperatorTok{=}\NormalTok{ nn.Linear(hidden\_size, output\_size)}
+
+    \KeywordTok{def}\NormalTok{ forward(}\VariableTok{self}\NormalTok{, input\_seq, seq\_lengths):}
+\NormalTok{        batch\_size }\OperatorTok{=} \BuiltInTok{len}\NormalTok{(input\_seq)}
+\NormalTok{        last\_hidden }\OperatorTok{=}\NormalTok{ torch.zeros(batch\_size, }\VariableTok{self}\NormalTok{.hidden\_size, device}\OperatorTok{=}\NormalTok{device)}
+
+        \ControlFlowTok{for}\NormalTok{ b }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(batch\_size):}
+\NormalTok{            hidden }\OperatorTok{=}\NormalTok{ torch.zeros(}\VariableTok{self}\NormalTok{.hidden\_size, device}\OperatorTok{=}\NormalTok{device)}
+
+\NormalTok{            seq\_length }\OperatorTok{=}\NormalTok{  seq\_lengths[b]}
+
+            \ControlFlowTok{for}\NormalTok{ t }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(seq\_length):}
+\NormalTok{                hidden }\OperatorTok{=} \VariableTok{self}\NormalTok{.rnn(input\_seq[b][t], hidden)}
+
+            \CommentTok{\# Store the last hidden state in the output tensor}
+\NormalTok{            last\_hidden[b] }\OperatorTok{=}\NormalTok{ hidden}
+
+\NormalTok{        output }\OperatorTok{=} \VariableTok{self}\NormalTok{.linear(last\_hidden)}
+        \ControlFlowTok{return}\NormalTok{ output}
+
+\CommentTok{\# Define a sequence prediction model for fixed length sequences, BUT NO SHARED WEIGHTS}
+\KeywordTok{class}\NormalTok{ SequenceModelFixedLen(nn.Module):}
+    \KeywordTok{def} \FunctionTok{\_\_init\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, input\_size, hidden\_size, output\_size, seq\_len):}
+        \BuiltInTok{super}\NormalTok{(SequenceModelFixedLen, }\VariableTok{self}\NormalTok{).}\FunctionTok{\_\_init\_\_}\NormalTok{()}
+        \VariableTok{self}\NormalTok{.hidden\_size }\OperatorTok{=}\NormalTok{ hidden\_size}
+        \VariableTok{self}\NormalTok{.seq\_len }\OperatorTok{=}\NormalTok{ seq\_len}
+        \VariableTok{self}\NormalTok{.rnn\_layers }\OperatorTok{=}\NormalTok{ nn.ModuleList([RNNLayer(input\_size, hidden\_size) }\ControlFlowTok{for}\NormalTok{ \_ }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(seq\_len)])}
+        \VariableTok{self}\NormalTok{.linear }\OperatorTok{=}\NormalTok{ nn.Linear(hidden\_size, output\_size)}
+
+    \KeywordTok{def}\NormalTok{ forward(}\VariableTok{self}\NormalTok{, input\_seq, seq\_lengths):}
+\NormalTok{        batch\_size }\OperatorTok{=} \BuiltInTok{len}\NormalTok{(input\_seq)}
+\NormalTok{        last\_hidden }\OperatorTok{=}\NormalTok{ torch.zeros(batch\_size, }\VariableTok{self}\NormalTok{.hidden\_size, device}\OperatorTok{=}\NormalTok{device)}
+
+        \ControlFlowTok{for}\NormalTok{ b }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(batch\_size):}
+\NormalTok{            hidden }\OperatorTok{=}\NormalTok{ torch.zeros(}\VariableTok{self}\NormalTok{.hidden\_size, device}\OperatorTok{=}\NormalTok{device).to(device)}
+
+\NormalTok{            seq\_length }\OperatorTok{=} \BuiltInTok{min}\NormalTok{(}\VariableTok{self}\NormalTok{.seq\_len, seq\_lengths[b]) }
+            \ControlFlowTok{for}\NormalTok{ t }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(seq\_length):}
+\NormalTok{                hidden }\OperatorTok{=} \VariableTok{self}\NormalTok{.rnn\_layers[t](input\_seq[b][t], hidden)}
+
+            \CommentTok{\# Store the last hidden state in the output tensor}
+\NormalTok{            last\_hidden[b] }\OperatorTok{=}\NormalTok{ hidden}
+
+\NormalTok{        output }\OperatorTok{=} \VariableTok{self}\NormalTok{.linear(last\_hidden)}
+        \ControlFlowTok{return}\NormalTok{ output}
+
+
+
+\KeywordTok{class}\NormalTok{ PaddedModel(nn.Module):}
+    \KeywordTok{def} \FunctionTok{\_\_init\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, input\_size, hidden\_size, output\_size, seq\_len\_max):}
+        \BuiltInTok{super}\NormalTok{(PaddedModel, }\VariableTok{self}\NormalTok{).}\FunctionTok{\_\_init\_\_}\NormalTok{()}
+        \VariableTok{self}\NormalTok{.hidden\_size }\OperatorTok{=}\NormalTok{ hidden\_size}
+        \VariableTok{self}\NormalTok{.seq\_len\_max }\OperatorTok{=}\NormalTok{ seq\_len\_max}
+        \VariableTok{self}\NormalTok{.rnn\_layers }\OperatorTok{=}\NormalTok{ nn.ModuleList([RNNLayer(input\_size, hidden\_size) }\ControlFlowTok{for}\NormalTok{ \_ }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(seq\_len\_max)])}
+        \VariableTok{self}\NormalTok{.linear }\OperatorTok{=}\NormalTok{ nn.Linear(hidden\_size, output\_size)}
+
+    \KeywordTok{def}\NormalTok{ forward(}\VariableTok{self}\NormalTok{, padded\_batch, lengths):}
+\NormalTok{        B, T, \_ }\OperatorTok{=}\NormalTok{ padded\_batch.shape}
+\NormalTok{        device }\OperatorTok{=}\NormalTok{ padded\_batch.device}
+
+\NormalTok{        hidden }\OperatorTok{=}\NormalTok{ [torch.zeros(}\VariableTok{self}\NormalTok{.hidden\_size, device}\OperatorTok{=}\NormalTok{device) }\ControlFlowTok{for}\NormalTok{ \_ }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(B)]}
+
+        \ControlFlowTok{for}\NormalTok{ t }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(T):}
+            \ControlFlowTok{for}\NormalTok{ b }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(B):}
+                \ControlFlowTok{if}\NormalTok{ t }\OperatorTok{\textless{}}\NormalTok{ lengths[b]:}
+
+\NormalTok{                    hidden[b] }\OperatorTok{=} \VariableTok{self}\NormalTok{.rnn\_layers[t](padded\_batch[b, t], hidden[b])}
+
+\NormalTok{        last\_hidden }\OperatorTok{=}\NormalTok{ torch.stack(hidden, dim}\OperatorTok{=}\DecValTok{0}\NormalTok{)}
+        \ControlFlowTok{return} \VariableTok{self}\NormalTok{.linear(last\_hidden)}
+
+
+
+\CommentTok{\# Define hyperparameters and other settings}
+\NormalTok{input\_size }\OperatorTok{=} \DecValTok{10}  \CommentTok{\# Replace with the actual dimension of your input features}
+\NormalTok{hidden\_size }\OperatorTok{=} \DecValTok{64}
+\NormalTok{output\_size }\OperatorTok{=} \DecValTok{1}
+\NormalTok{num\_epochs }\OperatorTok{=} \DecValTok{10}
+\NormalTok{learning\_rate }\OperatorTok{=} \FloatTok{0.001}
+\NormalTok{batch\_size }\OperatorTok{=} \DecValTok{32}
+
+
+\CommentTok{\# load data}
+\NormalTok{X\_train, X\_test, y\_train, y\_test }\OperatorTok{=}\NormalTok{ loadData()}
+\NormalTok{device }\OperatorTok{=}\NormalTok{ y\_train.device}
+
+\CommentTok{\# Create the model using min length input}
+\NormalTok{seq\_lengths }\OperatorTok{=}\NormalTok{ [seq.shape[}\DecValTok{0}\NormalTok{] }\ControlFlowTok{for}\NormalTok{ seq }\KeywordTok{in}\NormalTok{ X\_train]}
+
+
+\NormalTok{all\_indices }\OperatorTok{=}\NormalTok{ np.arange(}\BuiltInTok{len}\NormalTok{(X\_train))}
+\NormalTok{np.random.shuffle(all\_indices)}
+
+\NormalTok{train\_cutoff }\OperatorTok{=} \BuiltInTok{int}\NormalTok{(}\FloatTok{0.8} \OperatorTok{*} \BuiltInTok{len}\NormalTok{(all\_indices))}
+\NormalTok{train\_indices }\OperatorTok{=}\NormalTok{ all\_indices[:train\_cutoff]}
+\NormalTok{val\_indices   }\OperatorTok{=}\NormalTok{ all\_indices[train\_cutoff:]}
+
+
+\NormalTok{X\_train\_split }\OperatorTok{=}\NormalTok{ []}
+\ControlFlowTok{for}\NormalTok{ i }\KeywordTok{in}\NormalTok{ train\_indices:}
+\NormalTok{    X\_train\_split.append(X\_train[i])}
+\NormalTok{y\_train\_split }\OperatorTok{=}\NormalTok{ y\_train[train\_indices]}
+
+
+\NormalTok{X\_val\_split }\OperatorTok{=}\NormalTok{ []}
+\ControlFlowTok{for}\NormalTok{ i }\KeywordTok{in}\NormalTok{ val\_indices:}
+\NormalTok{    X\_val\_split.append(X\_train[i])}
+\NormalTok{y\_val\_split }\OperatorTok{=}\NormalTok{ y\_train[val\_indices]}
+
+
+\CommentTok{\# Training loop}
+\KeywordTok{def}\NormalTok{ train(model, num\_epochs, lr, batch\_size, X\_train, y\_train, seq\_lengths):}
+\NormalTok{    criterion }\OperatorTok{=}\NormalTok{ nn.MSELoss()}
+\NormalTok{    optimizer }\OperatorTok{=}\NormalTok{ optim.Adam(model.parameters(), lr}\OperatorTok{=}\NormalTok{lr)}
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"training!"}\NormalTok{)}
+    \ControlFlowTok{for}\NormalTok{ epoch }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(num\_epochs):}
+
+        \BuiltInTok{print}\NormalTok{(}\StringTok{"epoch "}\NormalTok{, epoch)}
+
+        \ControlFlowTok{for}\NormalTok{ i }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(}\DecValTok{0}\NormalTok{, }\BuiltInTok{len}\NormalTok{(X\_train), batch\_size):}
+\NormalTok{            inputs }\OperatorTok{=}\NormalTok{ X\_train[i:i}\OperatorTok{+}\NormalTok{batch\_size]}
+\NormalTok{            targets }\OperatorTok{=}\NormalTok{ y\_train[i:i}\OperatorTok{+}\NormalTok{batch\_size]}
+\NormalTok{            lengths }\OperatorTok{=}\NormalTok{ seq\_lengths[i:i}\OperatorTok{+}\NormalTok{batch\_size]}
+
+            \CommentTok{\#GPU related stuff to ensure it picks the right device}
+\NormalTok{            inputs  }\OperatorTok{=}\NormalTok{ [x.to(device) }\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ inputs]}
+\NormalTok{            targets }\OperatorTok{=}\NormalTok{ targets.to(device)}
+
+\NormalTok{            optimizer.zero\_grad()}
+\NormalTok{            outputs }\OperatorTok{=}\NormalTok{ model(inputs, lengths)}
+\NormalTok{            loss }\OperatorTok{=}\NormalTok{ criterion(outputs, targets)}
+\NormalTok{            loss.backward()}
+\NormalTok{            optimizer.step()}
+\NormalTok{        MSE\_val }\OperatorTok{=}\NormalTok{ mse\_padded(model, X\_val\_split, y\_val\_split)}
+        \BuiltInTok{print}\NormalTok{(}\StringTok{"MSE "}\NormalTok{, MSE\_val)}
+        \BuiltInTok{print}\NormalTok{(loss)}
+    \ControlFlowTok{return}\NormalTok{ model}
+
+\KeywordTok{def}\NormalTok{ train\_padded(model, num\_epochs, lr, batch\_size, X\_train, y\_train):}
+\NormalTok{    model.train()}
+\NormalTok{    optimizer }\OperatorTok{=}\NormalTok{ optim.Adam(model.parameters(), lr}\OperatorTok{=}\NormalTok{lr)}
+\NormalTok{    criterion }\OperatorTok{=}\NormalTok{ nn.MSELoss()}
+
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"training padded!"}\NormalTok{)}
+
+    \ControlFlowTok{for}\NormalTok{ epoch }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(num\_epochs):}
+        \BuiltInTok{print}\NormalTok{(}\StringTok{"epoch "}\NormalTok{,epoch)}
+        \ControlFlowTok{for}\NormalTok{ i }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(}\DecValTok{0}\NormalTok{, }\BuiltInTok{len}\NormalTok{(X\_train), batch\_size):}
+\NormalTok{            batch }\OperatorTok{=}\NormalTok{ X\_train[i:i}\OperatorTok{+}\NormalTok{batch\_size]}
+\NormalTok{            targets }\OperatorTok{=}\NormalTok{ y\_train[i:i}\OperatorTok{+}\NormalTok{batch\_size].to(device)}
+
+\NormalTok{            lengths }\OperatorTok{=}\NormalTok{ [}\BuiltInTok{len}\NormalTok{(s) }\ControlFlowTok{for}\NormalTok{ s }\KeywordTok{in}\NormalTok{ batch]}
+\NormalTok{            padded }\OperatorTok{=}\NormalTok{ pad\_sequence(batch, batch\_first}\OperatorTok{=}\VariableTok{True}\NormalTok{).to(device)}
+\NormalTok{            optimizer.zero\_grad()}
+\NormalTok{            outputs }\OperatorTok{=}\NormalTok{ model(padded, lengths)}
+\NormalTok{            loss }\OperatorTok{=}\NormalTok{ criterion(outputs, targets)}
+\NormalTok{            loss.backward()}
+\NormalTok{            optimizer.step()}
+\NormalTok{        MSE\_val }\OperatorTok{=}\NormalTok{ mse\_padded(model, X\_val\_split, y\_val\_split)}
+        \BuiltInTok{print}\NormalTok{(}\StringTok{"Padded MSE "}\NormalTok{, MSE\_val)}
+        \BuiltInTok{print}\NormalTok{(loss.item())}
+
+
+\KeywordTok{def}\NormalTok{ mse(model, inputs, y):}
+\NormalTok{    model.}\BuiltInTok{eval}\NormalTok{()}
+\NormalTok{    crit }\OperatorTok{=}\NormalTok{ nn.MSELoss()}
+\NormalTok{    preds }\OperatorTok{=}\NormalTok{ []}
+\NormalTok{    bs }\OperatorTok{=} \DecValTok{64}
+\NormalTok{    lengths }\OperatorTok{=}\NormalTok{ []}
+
+    \ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ inputs:}
+\NormalTok{        lengths.append(}\BuiltInTok{len}\NormalTok{(x))}
+
+    \ControlFlowTok{for}\NormalTok{ i }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(}\DecValTok{0}\NormalTok{, }\BuiltInTok{len}\NormalTok{(inputs), bs):}
+
+\NormalTok{        batch }\OperatorTok{=}\NormalTok{ []}
+        \ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ inputs[i:i}\OperatorTok{+}\NormalTok{bs]:}
+\NormalTok{            batch.append(x.to(device))}
+
+\NormalTok{        lens  }\OperatorTok{=}\NormalTok{ lengths[i:i}\OperatorTok{+}\NormalTok{bs]}
+\NormalTok{        preds.append(model(batch, lens))}
+
+\NormalTok{    preds }\OperatorTok{=}\NormalTok{ torch.cat(preds, dim}\OperatorTok{=}\DecValTok{0}\NormalTok{)}
+
+    \ControlFlowTok{return}\NormalTok{ crit(preds, y.to(device)).item()}
+
+
+
+\KeywordTok{def}\NormalTok{ mse\_padded(model, inputs, y):}
+\NormalTok{    model.}\BuiltInTok{eval}\NormalTok{()}
+\NormalTok{    crit }\OperatorTok{=}\NormalTok{ nn.MSELoss()}
+\NormalTok{    preds }\OperatorTok{=}\NormalTok{ []}
+\NormalTok{    bs }\OperatorTok{=} \DecValTok{64}
+
+\NormalTok{    lengths }\OperatorTok{=}\NormalTok{ []}
+    \ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ inputs:}
+\NormalTok{        lengths.append(}\BuiltInTok{len}\NormalTok{(x))}
+
+    \ControlFlowTok{for}\NormalTok{ i }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(}\DecValTok{0}\NormalTok{, }\BuiltInTok{len}\NormalTok{(inputs), bs):}
+\NormalTok{        batch }\OperatorTok{=}\NormalTok{ []}
+        \ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ inputs[i:i}\OperatorTok{+}\NormalTok{bs]:}
+\NormalTok{            batch.append(x.to(device))}
+
+\NormalTok{        lens }\OperatorTok{=}\NormalTok{ lengths[i:i}\OperatorTok{+}\NormalTok{bs]}
+\NormalTok{        padded }\OperatorTok{=}\NormalTok{ pad\_sequence(batch, batch\_first}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+
+\NormalTok{        preds.append(model(padded, lens))}
+
+\NormalTok{    preds }\OperatorTok{=}\NormalTok{ torch.cat(preds, dim}\OperatorTok{=}\DecValTok{0}\NormalTok{)}
+    \ControlFlowTok{return}\NormalTok{ crit(preds, y.to(device)).item()}
+
+
+
+\CommentTok{\# initialize and train Vanilla RNN}
+\ControlFlowTok{if} \VariableTok{\_\_name\_\_} \OperatorTok{==} \StringTok{"\_\_main\_\_"}\NormalTok{:}
+
+\NormalTok{    X\_train, X\_test, y\_train, y\_test }\OperatorTok{=}\NormalTok{ loadData()}
+
+    \ControlFlowTok{if}\NormalTok{ torch.cuda.is\_available():}
+\NormalTok{        device }\OperatorTok{=}\NormalTok{ torch.device(}\StringTok{"cuda"}\NormalTok{) }\CommentTok{\# pick my gpu}
+        \BuiltInTok{print}\NormalTok{(}\StringTok{"cuda selected!"}\NormalTok{)}
+    \ControlFlowTok{else}\NormalTok{:}
+\NormalTok{        device }\OperatorTok{=}\NormalTok{ torch.device(}\StringTok{"cpu"}\NormalTok{)}
+        \BuiltInTok{print}\NormalTok{(}\StringTok{"cpu selected. no visible gpu"}\NormalTok{)}
+
+
+
+\NormalTok{    seq\_lengths\_tr  }\OperatorTok{=}\NormalTok{ [}\BuiltInTok{len}\NormalTok{(x) }\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ X\_train\_split]}
+\NormalTok{    seq\_lengths\_val }\OperatorTok{=}\NormalTok{ [}\BuiltInTok{len}\NormalTok{(x) }\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ X\_val\_split]}
+
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"Vanilla RNN . . . . ."}\NormalTok{)}
+\NormalTok{    vanilla }\OperatorTok{=}\NormalTok{ SequenceModel(input\_size, hidden\_size, output\_size).to(device)}
+\NormalTok{    train\_vanilla\_RNN }\OperatorTok{=}\NormalTok{train(vanilla, num\_epochs, learning\_rate, batch\_size, X\_train, y\_train, seq\_lengths)}
+
+
+    \BuiltInTok{print}\NormalTok{ (}\StringTok{"fixed length truncated model...."}\NormalTok{)}
+
+
+\NormalTok{    Lmin }\OperatorTok{=} \BuiltInTok{min}\NormalTok{(seq\_lengths)}
+\NormalTok{    X\_train\_trunc }\OperatorTok{=}\NormalTok{ []}
+
+    \ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ X\_train:}
+\NormalTok{         truncated\_seq }\OperatorTok{=}\NormalTok{ x[:Lmin]}
+\NormalTok{         X\_train\_trunc.append(truncated\_seq)}
+
+\NormalTok{    seq\_lengths\_trunc }\OperatorTok{=}\NormalTok{ [Lmin] }\OperatorTok{*} \BuiltInTok{len}\NormalTok{(X\_train\_trunc)}
+
+
+\NormalTok{    trunc }\OperatorTok{=}\NormalTok{ SequenceModelFixedLen(input\_size, hidden\_size, output\_size, seq\_len}\OperatorTok{=}\NormalTok{Lmin).to(device)}
+\NormalTok{    Train\_trunc }\OperatorTok{=}\NormalTok{ train(trunc, num\_epochs, learning\_rate, batch\_size, X\_train\_trunc, y\_train, seq\_lengths\_trunc)}
+
+
+
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"padded model ...."}\NormalTok{)}
+\NormalTok{    Lmax }\OperatorTok{=} \BuiltInTok{max}\NormalTok{(seq\_lengths)}
+\NormalTok{    padded\_model }\OperatorTok{=}\NormalTok{ PaddedModel(input\_size, hidden\_size, output\_size, seq\_len\_max}\OperatorTok{=}\NormalTok{Lmax).to(device)}
+\NormalTok{    train\_padded(padded\_model, num\_epochs, learning\_rate, batch\_size, X\_train, y\_train)}
+
+
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"testing each"}\NormalTok{)}
+\NormalTok{    vanilla\_test }\OperatorTok{=}\NormalTok{ mse(vanilla, X\_test, y\_test)}
+
+\NormalTok{    trunc\_test }\OperatorTok{=}\NormalTok{ []}
+
+    \ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ X\_test:}
+\NormalTok{        truncated\_seq }\OperatorTok{=}\NormalTok{ x[:Lmin]}
+\NormalTok{        trunc\_test.append(truncated\_seq)}
+
+\NormalTok{    test\_trunc   }\OperatorTok{=}\NormalTok{ mse(trunc, trunc\_test, y\_test)}
+
+\NormalTok{    padded\_test  }\OperatorTok{=}\NormalTok{ mse\_padded(padded\_model, X\_test, y\_test)}
+
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"vanilla test!!  "}\NormalTok{, vanilla\_test , }\StringTok{"truncated test!! "}\NormalTok{ , test\_trunc , }\StringTok{"Padded Test!! "}\NormalTok{, padded\_test)}
+
+\BuiltInTok{print}\NormalTok{(}\StringTok{"vanilla test!!  "}\NormalTok{, vanilla\_test , }\StringTok{"truncated test!! "}\NormalTok{ , test\_trunc , }\StringTok{"Padded Test!! "}\NormalTok{, padded\_test)}
+
+
+\CommentTok{\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#\#}
+
+\CommentTok{\# initialize and train Sequential NN fixing \#timesteps to the minimum sequence length}
+
+\CommentTok{\# initialize and train Sequential NN fixing \#timesteps to the maximum sequence length}
+\CommentTok{\# }\AlertTok{NOTE}\CommentTok{: it is OK to use torch.nn.utils.rnn.pad\_sequence; make sure to set parameter batch\_first correctly}
+\end{Highlighting}
+\end{Shaded}
+
+\phantomsection\label{prob2}
+\begin{verbatim}
+vanilla test!!   0.00036904800799675286 truncated test!!  0.009197115898132324 Padded Test!!  0.00724533898755908
+\end{verbatim}
+
 \section{3 Fine-tune a DistilBERT model {[}20 points + 2 bonus
 points{]}}\label{fine-tune-a-distilbert-model-20-points-2-bonus-points}
 
