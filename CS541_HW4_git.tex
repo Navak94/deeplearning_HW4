@@ -66,6 +66,46 @@
 \fi
 \makeatother
 
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{241,243,245}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.40,0.45,0.13}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\BuiltInTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\ExtensionTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.28,0.35,0.67}{#1}}
+\newcommand{\ImportTok}[1]{\textcolor[rgb]{0.00,0.46,0.62}{#1}}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.68,0.00,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{\textcolor[rgb]{0.00,0.23,0.31}{#1}}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.07,0.07,0.07}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.13,0.47,0.30}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.37,0.37,0.37}{\textit{#1}}}
 
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}\usepackage{longtable,booktabs,array}
@@ -203,6 +243,371 @@ The training and test datasets can be accessed via the following links:
 
 To help you get started, a demo code are available at:
 \url{https://colab.research.google.com/drive/1fG0f6LiPnv7a4nDWNPtVyo1Y0Xh5vp71?usp=sharing}.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{Answer}\label{answer}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+
+\CommentTok{\# import packages}
+\ImportTok{import}\NormalTok{ pandas }\ImportTok{as}\NormalTok{ pd}
+\ImportTok{import}\NormalTok{ numpy }\ImportTok{as}\NormalTok{ np}
+\ImportTok{import}\NormalTok{ torch}
+\ImportTok{import}\NormalTok{ json}
+\NormalTok{device }\OperatorTok{=}\NormalTok{ torch.device(}\StringTok{\textquotesingle{}cuda\textquotesingle{}} \ControlFlowTok{if}\NormalTok{ torch.cuda.is\_available() }\ControlFlowTok{else} \StringTok{\textquotesingle{}cpu\textquotesingle{}}\NormalTok{)}
+
+
+\CommentTok{\# connect to google drive}
+\ImportTok{from}\NormalTok{ google.colab }\ImportTok{import}\NormalTok{ drive}
+\NormalTok{drive.mount(}\StringTok{\textquotesingle{}/content/drive/\textquotesingle{}}\NormalTok{)}
+
+\CommentTok{\# Step 1}
+
+\CommentTok{\# NEW TOM + NATE BLOCK}
+\ImportTok{import}\NormalTok{ torch.nn }\ImportTok{as}\NormalTok{ nn}
+
+\KeywordTok{class}\NormalTok{ betterCNN(nn.Module):}
+    \KeywordTok{def} \FunctionTok{\_\_init\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, num\_classes}\OperatorTok{=}\DecValTok{5}\NormalTok{):}
+        \BuiltInTok{super}\NormalTok{(betterCNN, }\VariableTok{self}\NormalTok{).}\FunctionTok{\_\_init\_\_}\NormalTok{()}
+
+        \CommentTok{\# convolutional block}
+        \VariableTok{self}\NormalTok{.conv1 }\OperatorTok{=}\NormalTok{ nn.Conv2d(}\DecValTok{3}\NormalTok{, }\DecValTok{64}\NormalTok{, kernel\_size}\OperatorTok{=}\DecValTok{3}\NormalTok{, stride}\OperatorTok{=}\DecValTok{1}\NormalTok{, padding}\OperatorTok{=}\DecValTok{1}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.bn1 }\OperatorTok{=}\NormalTok{ nn.BatchNorm2d(}\DecValTok{64}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.conv2 }\OperatorTok{=}\NormalTok{ nn.Conv2d(}\DecValTok{64}\NormalTok{, }\DecValTok{64}\NormalTok{, kernel\_size}\OperatorTok{=}\DecValTok{3}\NormalTok{, stride}\OperatorTok{=}\DecValTok{1}\NormalTok{, padding}\OperatorTok{=}\DecValTok{1}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.bn2 }\OperatorTok{=}\NormalTok{ nn.BatchNorm2d(}\DecValTok{64}\NormalTok{)}
+
+        \CommentTok{\# convolutional block}
+        \VariableTok{self}\NormalTok{.conv3 }\OperatorTok{=}\NormalTok{ nn.Conv2d(}\DecValTok{64}\NormalTok{, }\DecValTok{128}\NormalTok{, kernel\_size}\OperatorTok{=}\DecValTok{3}\NormalTok{, stride}\OperatorTok{=}\DecValTok{1}\NormalTok{, padding}\OperatorTok{=}\DecValTok{1}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.bn3 }\OperatorTok{=}\NormalTok{ nn.BatchNorm2d(}\DecValTok{128}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.conv4 }\OperatorTok{=}\NormalTok{ nn.Conv2d(}\DecValTok{128}\NormalTok{, }\DecValTok{128}\NormalTok{, kernel\_size}\OperatorTok{=}\DecValTok{3}\NormalTok{, stride}\OperatorTok{=}\DecValTok{1}\NormalTok{, padding}\OperatorTok{=}\DecValTok{1}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.bn4 }\OperatorTok{=}\NormalTok{ nn.BatchNorm2d(}\DecValTok{128}\NormalTok{)}
+
+        \CommentTok{\# convolutional block}
+        \VariableTok{self}\NormalTok{.conv5 }\OperatorTok{=}\NormalTok{ nn.Conv2d(}\DecValTok{128}\NormalTok{, }\DecValTok{256}\NormalTok{, kernel\_size}\OperatorTok{=}\DecValTok{3}\NormalTok{, stride}\OperatorTok{=}\DecValTok{1}\NormalTok{, padding}\OperatorTok{=}\DecValTok{1}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.bn5 }\OperatorTok{=}\NormalTok{ nn.BatchNorm2d(}\DecValTok{256}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.conv6 }\OperatorTok{=}\NormalTok{ nn.Conv2d(}\DecValTok{256}\NormalTok{, }\DecValTok{256}\NormalTok{, kernel\_size}\OperatorTok{=}\DecValTok{3}\NormalTok{, stride}\OperatorTok{=}\DecValTok{1}\NormalTok{, padding}\OperatorTok{=}\DecValTok{1}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.bn6 }\OperatorTok{=}\NormalTok{ nn.BatchNorm2d(}\DecValTok{256}\NormalTok{)}
+
+        \CommentTok{\# pooling and dropout}
+        \VariableTok{self}\NormalTok{.pool }\OperatorTok{=}\NormalTok{ nn.MaxPool2d(}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.dropout }\OperatorTok{=}\NormalTok{ nn.Dropout(}\FloatTok{0.2}\NormalTok{)}
+
+        \CommentTok{\# fully connected layers}
+        \VariableTok{self}\NormalTok{.fc1 }\OperatorTok{=}\NormalTok{ nn.Linear(}\DecValTok{256} \OperatorTok{*} \DecValTok{8} \OperatorTok{*} \DecValTok{8}\NormalTok{, }\DecValTok{512}\NormalTok{)}
+        \VariableTok{self}\NormalTok{.fc2 }\OperatorTok{=}\NormalTok{ nn.Linear(}\DecValTok{512}\NormalTok{, num\_classes)}
+
+    \KeywordTok{def}\NormalTok{ forward(}\VariableTok{self}\NormalTok{, x):}
+        \CommentTok{\# 1 block}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.conv1(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.bn1(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.conv2(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.bn2(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.pool(x)}
+
+        \CommentTok{\# 2 block}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.conv3(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.bn3(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.conv4(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.bn4(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.pool(x)}
+
+        \CommentTok{\# 3 block}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.conv5(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.bn5(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.conv6(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.bn6(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.pool(x)}
+
+        \CommentTok{\# flatten}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ x.view(}\OperatorTok{{-}}\DecValTok{1}\NormalTok{, }\DecValTok{256} \OperatorTok{*} \DecValTok{8} \OperatorTok{*} \DecValTok{8}\NormalTok{)}
+
+        \CommentTok{\# fully connected layers}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.fc1(x)}
+\NormalTok{        x }\OperatorTok{=}\NormalTok{ torch.relu(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.dropout(x)}
+\NormalTok{        x }\OperatorTok{=} \VariableTok{self}\NormalTok{.fc2(x)}
+
+        \ControlFlowTok{return}\NormalTok{ x}
+
+\NormalTok{model }\OperatorTok{=}\NormalTok{ betterCNN(num\_classes}\OperatorTok{=}\DecValTok{5}\NormalTok{)}
+\NormalTok{model }\OperatorTok{=}\NormalTok{ model.to(device)}
+\BuiltInTok{print}\NormalTok{(model)}
+
+\CommentTok{\# Step 2}
+
+\CommentTok{\# NEW TOM + NATE BLOCK}
+
+\ImportTok{from}\NormalTok{ torchvision }\ImportTok{import}\NormalTok{ datasets, transforms}
+\ImportTok{from}\NormalTok{ torch.utils.data }\ImportTok{import}\NormalTok{ DataLoader, random\_split}
+
+\CommentTok{\# transform with augmentation}
+\NormalTok{train\_transform }\OperatorTok{=}\NormalTok{ transforms.Compose([}
+\NormalTok{    transforms.Resize((}\DecValTok{64}\NormalTok{, }\DecValTok{64}\NormalTok{)),}
+\NormalTok{    transforms.RandomHorizontalFlip(p}\OperatorTok{=}\FloatTok{0.5}\NormalTok{),}
+\NormalTok{    transforms.RandomRotation(degrees}\OperatorTok{=}\DecValTok{15}\NormalTok{),}
+\NormalTok{    transforms.ColorJitter(brightness}\OperatorTok{=}\FloatTok{0.2}\NormalTok{, contrast}\OperatorTok{=}\FloatTok{0.2}\NormalTok{, saturation}\OperatorTok{=}\FloatTok{0.2}\NormalTok{, hue}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),}
+\NormalTok{    transforms.RandomAffine(degrees}\OperatorTok{=}\DecValTok{0}\NormalTok{, translate}\OperatorTok{=}\NormalTok{(}\FloatTok{0.1}\NormalTok{, }\FloatTok{0.1}\NormalTok{)),}
+\NormalTok{    transforms.ToTensor(),}
+\NormalTok{    transforms.Normalize((}\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{), (}\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{))}
+\NormalTok{])}
+
+\CommentTok{\# val transform (no augmentation)}
+\NormalTok{val\_transform }\OperatorTok{=}\NormalTok{ transforms.Compose([}
+\NormalTok{    transforms.Resize((}\DecValTok{64}\NormalTok{, }\DecValTok{64}\NormalTok{)),}
+\NormalTok{    transforms.ToTensor(),}
+\NormalTok{    transforms.Normalize((}\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{), (}\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{))}
+\NormalTok{])}
+
+\NormalTok{trainset\_dir }\OperatorTok{=} \StringTok{\textquotesingle{}/content/drive/MyDrive/train\_set\textquotesingle{}}
+
+\NormalTok{full\_dataset }\OperatorTok{=}\NormalTok{ datasets.ImageFolder(root}\OperatorTok{=}\NormalTok{trainset\_dir, transform}\OperatorTok{=}\VariableTok{None}\NormalTok{)}
+
+\NormalTok{total\_size }\OperatorTok{=} \BuiltInTok{len}\NormalTok{(full\_dataset)}
+\NormalTok{indices }\OperatorTok{=} \BuiltInTok{list}\NormalTok{(}\BuiltInTok{range}\NormalTok{(total\_size))}
+\NormalTok{np.random.seed(}\DecValTok{42}\NormalTok{)}
+\NormalTok{np.random.shuffle(indices)}
+
+\NormalTok{train\_size }\OperatorTok{=} \BuiltInTok{int}\NormalTok{(}\FloatTok{0.85} \OperatorTok{*}\NormalTok{ total\_size)}
+\NormalTok{val\_size }\OperatorTok{=}\NormalTok{ total\_size }\OperatorTok{{-}}\NormalTok{ train\_size}
+
+\NormalTok{train\_indices }\OperatorTok{=}\NormalTok{ indices[}\DecValTok{0}\NormalTok{:train\_size]}
+\NormalTok{val\_indices }\OperatorTok{=}\NormalTok{ indices[train\_size:total\_size]}
+
+\NormalTok{train\_dataset }\OperatorTok{=}\NormalTok{ datasets.ImageFolder(root}\OperatorTok{=}\NormalTok{trainset\_dir, transform}\OperatorTok{=}\NormalTok{train\_transform)}
+\NormalTok{train\_subset }\OperatorTok{=}\NormalTok{ torch.utils.data.Subset(train\_dataset, train\_indices)}
+
+\NormalTok{val\_dataset }\OperatorTok{=}\NormalTok{ datasets.ImageFolder(root}\OperatorTok{=}\NormalTok{trainset\_dir, transform}\OperatorTok{=}\NormalTok{val\_transform)}
+\NormalTok{val\_subset }\OperatorTok{=}\NormalTok{ torch.utils.data.Subset(val\_dataset, val\_indices)}
+
+\NormalTok{train\_loader }\OperatorTok{=}\NormalTok{ DataLoader(train\_subset, batch\_size}\OperatorTok{=}\DecValTok{64}\NormalTok{, shuffle}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+\NormalTok{val\_loader }\OperatorTok{=}\NormalTok{ DataLoader(val\_subset, batch\_size}\OperatorTok{=}\DecValTok{64}\NormalTok{, shuffle}\OperatorTok{=}\VariableTok{False}\NormalTok{)}
+
+
+\CommentTok{\# Step 3}
+
+\CommentTok{\# NEW TOM + NATE BLOCK}
+
+\ImportTok{import}\NormalTok{ torch.optim }\ImportTok{as}\NormalTok{ optim}
+\NormalTok{criterion }\OperatorTok{=}\NormalTok{ nn.CrossEntropyLoss(label\_smoothing}\OperatorTok{=}\FloatTok{0.09}\NormalTok{) }\CommentTok{\# added label smoothing}
+\NormalTok{optimizer }\OperatorTok{=}\NormalTok{ optim.Adam(model.parameters(), lr}\OperatorTok{=}\FloatTok{0.002}\NormalTok{, weight\_decay}\OperatorTok{=}\FloatTok{0.00001}\NormalTok{) }\CommentTok{\# added weight decay}
+\CommentTok{\# added learning rate scheduler}
+\NormalTok{scheduler }\OperatorTok{=}\NormalTok{ optim.lr\_scheduler.ReduceLROnPlateau(}
+\NormalTok{    optimizer,}
+\NormalTok{    mode}\OperatorTok{=}\StringTok{\textquotesingle{}max\textquotesingle{}}\NormalTok{,}
+\NormalTok{    factor}\OperatorTok{=}\FloatTok{0.5}\NormalTok{,}
+\NormalTok{    patience}\OperatorTok{=}\DecValTok{5}\NormalTok{)}
+
+\CommentTok{\# Step 4}
+
+\CommentTok{\# NEW TOM + NATE BLOCK}
+
+\KeywordTok{def}\NormalTok{ train(model, train\_loader, val\_loader, criterion, optimizer, scheduler, num\_epochs}\OperatorTok{=}\DecValTok{30}\NormalTok{):}
+\NormalTok{    best\_val\_acc }\OperatorTok{=} \FloatTok{0.0}
+\NormalTok{    patience\_counter }\OperatorTok{=} \DecValTok{0}
+\NormalTok{    early\_stop\_patience }\OperatorTok{=} \DecValTok{10}
+
+\NormalTok{    train\_losses }\OperatorTok{=}\NormalTok{ []}
+\NormalTok{    val\_accuracies }\OperatorTok{=}\NormalTok{ []}
+
+    \ControlFlowTok{for}\NormalTok{ epoch }\KeywordTok{in} \BuiltInTok{range}\NormalTok{(num\_epochs):}
+        \CommentTok{\# train}
+\NormalTok{        model.train()}
+\NormalTok{        running\_loss }\OperatorTok{=} \FloatTok{0.0}
+\NormalTok{        train\_correct }\OperatorTok{=} \DecValTok{0}
+\NormalTok{        train\_total }\OperatorTok{=} \DecValTok{0}
+
+        \ControlFlowTok{for}\NormalTok{ inputs, labels }\KeywordTok{in}\NormalTok{ train\_loader:}
+\NormalTok{            inputs }\OperatorTok{=}\NormalTok{ inputs.to(device)}
+\NormalTok{            labels }\OperatorTok{=}\NormalTok{ labels.to(device)}
+
+\NormalTok{            optimizer.zero\_grad()}
+\NormalTok{            outputs }\OperatorTok{=}\NormalTok{ model(inputs)}
+\NormalTok{            loss }\OperatorTok{=}\NormalTok{ criterion(outputs, labels)}
+\NormalTok{            loss.backward()}
+\NormalTok{            optimizer.step()}
+
+\NormalTok{            running\_loss }\OperatorTok{=}\NormalTok{ running\_loss }\OperatorTok{+}\NormalTok{ loss.item()}
+
+\NormalTok{            predictions }\OperatorTok{=}\NormalTok{ torch.}\BuiltInTok{max}\NormalTok{(outputs, }\DecValTok{1}\NormalTok{)[}\DecValTok{1}\NormalTok{]}
+\NormalTok{            train\_total }\OperatorTok{=}\NormalTok{ train\_total }\OperatorTok{+}\NormalTok{ labels.size(}\DecValTok{0}\NormalTok{)}
+\NormalTok{            train\_correct }\OperatorTok{=}\NormalTok{ train\_correct }\OperatorTok{+}\NormalTok{ (predictions }\OperatorTok{==}\NormalTok{ labels).}\BuiltInTok{sum}\NormalTok{().item()}
+
+\NormalTok{        avg\_train\_loss }\OperatorTok{=}\NormalTok{ running\_loss }\OperatorTok{/} \BuiltInTok{len}\NormalTok{(train\_loader)}
+\NormalTok{        train\_acc }\OperatorTok{=} \FloatTok{100.0} \OperatorTok{*}\NormalTok{ train\_correct }\OperatorTok{/}\NormalTok{ train\_total}
+\NormalTok{        train\_losses.append(avg\_train\_loss)}
+
+        \CommentTok{\# val}
+\NormalTok{        model.}\BuiltInTok{eval}\NormalTok{()}
+\NormalTok{        val\_correct }\OperatorTok{=} \DecValTok{0}
+\NormalTok{        val\_total }\OperatorTok{=} \DecValTok{0}
+
+        \ControlFlowTok{with}\NormalTok{ torch.no\_grad():}
+            \ControlFlowTok{for}\NormalTok{ inputs, labels }\KeywordTok{in}\NormalTok{ val\_loader:}
+\NormalTok{                inputs }\OperatorTok{=}\NormalTok{ inputs.to(device)}
+\NormalTok{                labels }\OperatorTok{=}\NormalTok{ labels.to(device)}
+\NormalTok{                outputs }\OperatorTok{=}\NormalTok{ model(inputs)}
+\NormalTok{                predictions }\OperatorTok{=}\NormalTok{ torch.}\BuiltInTok{max}\NormalTok{(outputs, }\DecValTok{1}\NormalTok{)[}\DecValTok{1}\NormalTok{]}
+\NormalTok{                val\_total }\OperatorTok{=}\NormalTok{ val\_total }\OperatorTok{+}\NormalTok{ labels.size(}\DecValTok{0}\NormalTok{)}
+\NormalTok{                val\_correct }\OperatorTok{=}\NormalTok{ val\_correct }\OperatorTok{+}\NormalTok{ (predictions }\OperatorTok{==}\NormalTok{ labels).}\BuiltInTok{sum}\NormalTok{().item()}
+
+\NormalTok{        val\_acc }\OperatorTok{=} \FloatTok{100.0} \OperatorTok{*}\NormalTok{ val\_correct }\OperatorTok{/}\NormalTok{ val\_total}
+\NormalTok{        val\_accuracies.append(val\_acc)}
+
+        \BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"Epoch }\SpecialCharTok{\{}\NormalTok{epoch }\OperatorTok{+} \DecValTok{1}\SpecialCharTok{\}}\SpecialStringTok{/}\SpecialCharTok{\{}\NormalTok{num\_epochs}\SpecialCharTok{\}}\SpecialStringTok{"}\NormalTok{)}
+        \BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f" {-}\textgreater{} Train Loss: }\SpecialCharTok{\{}\NormalTok{avg\_train\_loss}\SpecialCharTok{:.4f\}}\SpecialStringTok{, Train Acc: }\SpecialCharTok{\{}\NormalTok{train\_acc}\SpecialCharTok{:.2f\}}\SpecialStringTok{\%"}\NormalTok{)}
+        \BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f" {-}\textgreater{} Val Acc: }\SpecialCharTok{\{}\NormalTok{val\_acc}\SpecialCharTok{:.2f\}}\SpecialStringTok{\%"}\NormalTok{)}
+
+        \CommentTok{\# new scheduler step}
+\NormalTok{        scheduler.step(val\_acc)}
+
+        \CommentTok{\# save state added}
+        \ControlFlowTok{if}\NormalTok{ val\_acc }\OperatorTok{\textgreater{}=}\NormalTok{ best\_val\_acc:}
+\NormalTok{            best\_val\_acc }\OperatorTok{=}\NormalTok{ val\_acc}
+\NormalTok{            torch.save(model.state\_dict(), }\StringTok{\textquotesingle{}best\_model.pth\textquotesingle{}}\NormalTok{)}
+            \BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"{-}{-}{-}{-}\textgreater{} Best model saved {-}{-}{-}\textgreater{} Val Acc: }\SpecialCharTok{\{}\NormalTok{val\_acc}\SpecialCharTok{:.2f\}}\SpecialStringTok{\%"}\NormalTok{)}
+\NormalTok{            patience\_counter }\OperatorTok{=} \DecValTok{0}
+        \ControlFlowTok{else}\NormalTok{:}
+\NormalTok{            patience\_counter }\OperatorTok{=}\NormalTok{ patience\_counter }\OperatorTok{+} \DecValTok{1}
+
+        \CommentTok{\# early stopping}
+        \ControlFlowTok{if}\NormalTok{ patience\_counter }\OperatorTok{\textgreater{}=}\NormalTok{ early\_stop\_patience:}
+            \ControlFlowTok{break}
+
+        \BuiltInTok{print}\NormalTok{()}
+
+    \ControlFlowTok{return}\NormalTok{ train\_losses, val\_accuracies}
+
+\NormalTok{train\_losses, val\_accuracies }\OperatorTok{=}\NormalTok{ train(}
+\NormalTok{    model,}
+\NormalTok{    train\_loader,}
+\NormalTok{    val\_loader,}
+\NormalTok{    criterion,}
+\NormalTok{    optimizer,}
+\NormalTok{    scheduler,}
+\NormalTok{    num\_epochs}\OperatorTok{=}\DecValTok{100}
+\NormalTok{)}
+
+
+\CommentTok{\# Step 5}
+
+\CommentTok{\# NEW TOM + NATE BLOCK}
+
+\KeywordTok{def}\NormalTok{ evaluate(model, val\_loader):}
+\NormalTok{    model.}\BuiltInTok{eval}\NormalTok{()}
+\NormalTok{    correct }\OperatorTok{=} \DecValTok{0}
+\NormalTok{    total }\OperatorTok{=} \DecValTok{0}
+
+    \ControlFlowTok{with}\NormalTok{ torch.no\_grad():}
+        \ControlFlowTok{for}\NormalTok{ inputs, labels }\KeywordTok{in}\NormalTok{ val\_loader:}
+\NormalTok{            inputs }\OperatorTok{=}\NormalTok{ inputs.to(device)}
+\NormalTok{            labels }\OperatorTok{=}\NormalTok{ labels.to(device)}
+\NormalTok{            outputs }\OperatorTok{=}\NormalTok{ model(inputs)}
+\NormalTok{            predictions }\OperatorTok{=}\NormalTok{ torch.}\BuiltInTok{max}\NormalTok{(outputs, }\DecValTok{1}\NormalTok{)[}\DecValTok{1}\NormalTok{]}
+\NormalTok{            total }\OperatorTok{=}\NormalTok{ total }\OperatorTok{+}\NormalTok{ labels.size(}\DecValTok{0}\NormalTok{)}
+\NormalTok{            correct }\OperatorTok{=}\NormalTok{ correct }\OperatorTok{+}\NormalTok{ (predictions }\OperatorTok{==}\NormalTok{ labels).}\BuiltInTok{sum}\NormalTok{().item()}
+
+\NormalTok{    accuracy }\OperatorTok{=} \FloatTok{100.0} \OperatorTok{*}\NormalTok{ correct }\OperatorTok{/}\NormalTok{ total}
+    \BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f\textquotesingle{}Val Accuracy: }\SpecialCharTok{\{}\NormalTok{accuracy}\SpecialCharTok{:.2f\}}\SpecialStringTok{\%\textquotesingle{}}\NormalTok{)}
+    \ControlFlowTok{return}\NormalTok{ accuracy}
+
+\NormalTok{model.load\_state\_dict(torch.load(}\StringTok{\textquotesingle{}best\_model.pth\textquotesingle{}}\NormalTok{))}
+\NormalTok{evaluate(model, val\_loader)}
+
+\NormalTok{Please don}\StringTok{\textquotesingle{}t make any change after this line. The only parameters you may modify are those within the "test\_transform" function.}
+
+\ErrorTok{import os}
+\ImportTok{from}\NormalTok{ PIL }\ImportTok{import}\NormalTok{ Image}
+\KeywordTok{class}\NormalTok{ CustomImageDataset(torch.utils.data.Dataset):}
+    \KeywordTok{def} \FunctionTok{\_\_init\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, folder\_path, transform}\OperatorTok{=}\VariableTok{None}\NormalTok{):}
+        \VariableTok{self}\NormalTok{.folder\_path }\OperatorTok{=}\NormalTok{ folder\_path}
+        \VariableTok{self}\NormalTok{.transform }\OperatorTok{=}\NormalTok{ transform}
+        \VariableTok{self}\NormalTok{.image\_paths }\OperatorTok{=}\NormalTok{ [os.path.join(folder\_path, filename) }\ControlFlowTok{for}\NormalTok{ filename }\KeywordTok{in}\NormalTok{ os.listdir(folder\_path) }\ControlFlowTok{if}\NormalTok{ filename.endswith((}\StringTok{\textquotesingle{}png\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}jpg\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}jpeg\textquotesingle{}}\NormalTok{))]}
+
+    \KeywordTok{def} \FunctionTok{\_\_len\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{):}
+        \ControlFlowTok{return} \BuiltInTok{len}\NormalTok{(}\VariableTok{self}\NormalTok{.image\_paths)}
+
+    \KeywordTok{def}\NormalTok{ filename2index(}\VariableTok{self}\NormalTok{, filename):}
+        \ControlFlowTok{return}\NormalTok{ os.path.basename(filename).replace(}\StringTok{\textquotesingle{}.jpg\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}\textquotesingle{}}\NormalTok{)}
+
+    \KeywordTok{def} \FunctionTok{\_\_getitem\_\_}\NormalTok{(}\VariableTok{self}\NormalTok{, idx):}
+\NormalTok{        img\_path }\OperatorTok{=} \VariableTok{self}\NormalTok{.image\_paths[idx]}
+\NormalTok{        img }\OperatorTok{=}\NormalTok{ Image.}\BuiltInTok{open}\NormalTok{(img\_path).convert(}\StringTok{\textquotesingle{}RGB\textquotesingle{}}\NormalTok{)}
+        \ControlFlowTok{if} \VariableTok{self}\NormalTok{.transform:}
+\NormalTok{            img }\OperatorTok{=} \VariableTok{self}\NormalTok{.transform(img)}
+        \ControlFlowTok{return}\NormalTok{ img, }\VariableTok{self}\NormalTok{.filename2index(img\_path)}
+
+\NormalTok{test\_folder }\OperatorTok{=} \StringTok{\textquotesingle{}/content/drive/MyDrive/test\_set\textquotesingle{}}
+\NormalTok{test\_transform }\OperatorTok{=}\NormalTok{ transforms.Compose([}
+\NormalTok{    transforms.Resize((}\DecValTok{64}\NormalTok{, }\DecValTok{64}\NormalTok{)),}
+\NormalTok{    transforms.ToTensor(),}
+\NormalTok{    transforms.Normalize((}\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{), (}\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.5}\NormalTok{))}
+\NormalTok{])}
+\NormalTok{test\_dataset }\OperatorTok{=}\NormalTok{ CustomImageDataset(test\_folder, transform}\OperatorTok{=}\NormalTok{test\_transform)}
+\NormalTok{test\_loader }\OperatorTok{=}\NormalTok{ DataLoader(test\_dataset, batch\_size}\OperatorTok{=}\DecValTok{1}\NormalTok{, shuffle}\OperatorTok{=}\VariableTok{False}\NormalTok{)}
+
+\NormalTok{class\_to\_idx }\OperatorTok{=}\NormalTok{ train\_dataset.class\_to\_idx}
+\NormalTok{idx\_to\_class }\OperatorTok{=}\NormalTok{ \{v: k }\ControlFlowTok{for}\NormalTok{ k, v }\KeywordTok{in}\NormalTok{ class\_to\_idx.items()\}}
+
+\CommentTok{\# Make predictions}
+\KeywordTok{def}\NormalTok{ evaluate\_model(model, test\_loader, idx\_to\_class):}
+\NormalTok{    all\_predictions }\OperatorTok{=}\NormalTok{ \{\}}
+    \ControlFlowTok{with}\NormalTok{ torch.no\_grad():}
+        \ControlFlowTok{for}\NormalTok{ inputs, index }\KeywordTok{in}\NormalTok{ test\_loader:}
+\NormalTok{            inputs }\OperatorTok{=}\NormalTok{ inputs.to(device)}
+
+\NormalTok{            outputs }\OperatorTok{=}\NormalTok{ model(inputs)}
+\NormalTok{            \_, predicted }\OperatorTok{=}\NormalTok{ torch.}\BuiltInTok{max}\NormalTok{(outputs, }\DecValTok{1}\NormalTok{)}
+\NormalTok{            predicted\_class }\OperatorTok{=}\NormalTok{ predicted.item()}
+\NormalTok{            predicted\_class\_name }\OperatorTok{=}\NormalTok{ idx\_to\_class[predicted\_class]}
+\NormalTok{            all\_predictions[index[}\DecValTok{0}\NormalTok{]] }\OperatorTok{=}\NormalTok{ predicted\_class\_name}
+
+    \ControlFlowTok{return}\NormalTok{ all\_predictions}
+
+\NormalTok{predictions }\OperatorTok{=}\NormalTok{ evaluate\_model(model, test\_loader, idx\_to\_class)}
+\ControlFlowTok{with} \BuiltInTok{open}\NormalTok{(}\StringTok{\textquotesingle{}predictions.json\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}w\textquotesingle{}}\NormalTok{) }\ImportTok{as}\NormalTok{ json\_file:}
+\NormalTok{    json.dump(predictions, json\_file, indent}\OperatorTok{=}\DecValTok{4}\NormalTok{)}
+
+\BuiltInTok{print}\NormalTok{(}\StringTok{"Evaluation completed and predictions saved."}\NormalTok{)}
+
+\CommentTok{\# you may need to install thop when you first run this code}
+\OperatorTok{!}\NormalTok{pip install thop}
+
+\CommentTok{\# Compute FLOPs using thop}
+\ImportTok{import}\NormalTok{ thop}
+\NormalTok{input\_tensor }\OperatorTok{=}\NormalTok{ test\_dataset[}\DecValTok{0}\NormalTok{][}\DecValTok{0}\NormalTok{].unsqueeze(}\DecValTok{0}\NormalTok{).to(device) }\CommentTok{\# must have exact same size of the data input (batch, channel, height, width) and be on the same device as the model}
+\NormalTok{flops, params }\OperatorTok{=}\NormalTok{ thop.profile(model, inputs}\OperatorTok{=}\NormalTok{(input\_tensor,))}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"FLOPs: }\SpecialCharTok{\{}\NormalTok{flops}\SpecialCharTok{\}}\SpecialStringTok{"}\NormalTok{)}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"Number of Parameters: }\SpecialCharTok{\{}\NormalTok{params}\SpecialCharTok{\}}\SpecialStringTok{"}\NormalTok{)}
+\NormalTok{flops\_and\_params }\OperatorTok{=}\NormalTok{ \{}
+    \StringTok{"FLOPs"}\NormalTok{: flops,}
+    \StringTok{"Parameters"}\NormalTok{: params}
+\NormalTok{\}}
+
+\NormalTok{output\_json\_path }\OperatorTok{=} \StringTok{\textquotesingle{}flops\_and\_params.json\textquotesingle{}}
+
+\ControlFlowTok{with} \BuiltInTok{open}\NormalTok{(output\_json\_path, }\StringTok{\textquotesingle{}w\textquotesingle{}}\NormalTok{) }\ImportTok{as}\NormalTok{ json\_file:}
+\NormalTok{    json.dump(flops\_and\_params, json\_file, indent}\OperatorTok{=}\DecValTok{4}\NormalTok{)}
+
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"FLOPs and parameters have been saved to }\SpecialCharTok{\{}\NormalTok{output\_json\_path}\SpecialCharTok{\}}\SpecialStringTok{"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+Val Accuracy: 69.94%
+\end{verbatim}
+
+\phantomsection\label{prob1}
+\begin{verbatim}
+69.94328922495274
+\end{verbatim}
 
 \section{2 Comparing Vanilla RNN with Variants in Sequence Modeling
 {[}20
