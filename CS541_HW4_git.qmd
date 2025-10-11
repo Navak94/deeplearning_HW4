@@ -402,6 +402,7 @@ print(f"FLOPs and parameters have been saved to {output_json_path}")
 
 {{< embed cnn_improved.ipynb#prob1 >}}
 
+---
 
 # 2 Comparing Vanilla RNN with Variants in Sequence Modeling [20 points]
 
@@ -415,14 +416,19 @@ In particular, the i-th input sequence $\mathcal{X}^{(i)}=(x_{1}^{(i)},...,x_{l_
 Dataset: You will use a synthetic dataset containing sequences of variable lengths stored in the zip file homework5_question2_data.zip. Each sequence consists of input features and corresponding target values. The sequences are generated such that they represent a time-dependent process. Note that $l_{i}$ may be different than $l_{j}$ for $i\ne j$. So the (pickled) numpy object X is actually a list of sequences.
 
 Tasks:
+
 1. (4 points) Implement a Vanilla RNN: Implement a Vanilla RNN architecture (needless to say, weights are shared across time steps). A pytorch starter code is provided in homework4_starter.py. Important: You are not allowed to use an RNN layer implementation from any library.
+
 2. (4 points) Implement a NN with Sequences Truncated to the Same Length: Implement a NN where sequences are truncated to have the same length before training. In other words, if the shortest sequence in the dataset has length L, all sequences should be truncated to length L before training.
+
 3. (4 points) Implement a NN with Sequences Padded to the Same Length: Implement another variant of NN where sequences are padded to have the same length before training. Use appropriate padding techniques to ensure that all sequences have the same length, and implement a mechanism to ignore the padding when computing loss and predictions.
+
 4. Train and Compare the Models:
     (a) (1 point) Train all three models (Vanilla RNN, Truncated NN, Padded NN) on the provided dataset.
     (b) (1 point) Use a suitable loss function for sequence prediction tasks, such as mean squared error (MSE) or cross-entropy.
     (c) (1 point) Train each model for a fixed number of epochs or until convergence.
     (d) (1 point) Monitor and record performance metrics, such as training loss, on a validation set during training.
+
 5. Evaluate and Compare the Models:
     (a) (1 point) Evaluate the trained models on a separate test dataset.
     (b) (2 point) Compare the performance of the three models in terms of MSE, convergence speed, and overfitting tendencies.
@@ -776,6 +782,18 @@ print("vanilla test!!  ", vanilla_test , "truncated test!! " , test_trunc , "Pad
 
 {{< embed problem_2.ipynb#prob2 >}}
 
+
+### Q5(b)
+
+Vanilla RNN: best test MSE 0.000369; 25x better than truncated (0.00920), 20x better than padded (0.00725). Fastest convergence—MSE < 0.001 by epoch 6. Truncated plateaued = 0.0085, no further gain. Padded intermediate—trained to = 0.001. No overfitting; validation loss tracked training loss.
+
+### Q5(c)
+
+Vanilla RNN best, shared weights, true sequence lengths are likley the reason. Truncated worst, cuts data beyond min length, loses long-range info. Padded moderate, keeps data but zero-padding adds noise. Per-timestep RNNs handle uneven inputs. Truncated/padded models larger—separate weights per timestep, harder to train with limited data.
+
+
+---
+
 # 3 Fine-tune a DistilBERT model [20 points + 2 bonus points]
 
 In this project, you will first train a classification head using a pre-trained DistilBERT model on a dataset of social media tweets to classify tweets as containing medical information or not. You are provided with a dataset of social media tweets, where each tweet is labeled as either containing medical information (class 1) or not containing medical information (class 0).
@@ -807,7 +825,18 @@ Q6: (2 points) Based on the item above, discuss the performance of the model, an
 
 Q7: (BONUS: 2 points) Apply a principled change to your code in order to achieve F1-macro > 0.50. Explain what you did and why you did it.
 
-## 4 NOT PART OF HW4: Tensor Shapes in a Transformer Layer [0 points]
+---
+
+## Answer
+
+
+
+
+
+---
+
+
+# 4 NOT PART OF HW4: Tensor Shapes in a Transformer Layer [0 points]
 
 
 The figura above shows the transformer layer. The input size of the transformer layer is [10, 90, 20] (where 10 represents batch size, 90 represents sequence length, and 20 represents hidden size). We consider 5 attention heads in this attention layer. The shape of the (combined) projection matrices is $H\times H$, which are used to project the input data to Q (query), K (key), V (value). Please compute the size of the each output, including:
@@ -824,6 +853,8 @@ The figura above shows the transformer layer. The input size of the transformer 
 11. Total number of the parameters in this transformer layer
 
 For this homework, you are encouraged to experiment with various models and training strategies. To achieve a full score, your model must achieve at least 60% accuracy on the test set.
+
+---
 
 # Submission
 

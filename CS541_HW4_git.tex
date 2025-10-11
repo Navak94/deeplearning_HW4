@@ -609,6 +609,8 @@ Val Accuracy: 69.94%
 69.94328922495274
 \end{verbatim}
 
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
 \section{2 Comparing Vanilla RNN with Variants in Sequence Modeling
 {[}20
 points{]}}\label{comparing-vanilla-rnn-with-variants-in-sequence-modeling-20-points}
@@ -636,32 +638,64 @@ time-dependent process. Note that \(l_{i}\) may be different than
 \(l_{j}\) for \(i\ne j\). So the (pickled) numpy object X is actually a
 list of sequences.
 
-Tasks: 1. (4 points) Implement a Vanilla RNN: Implement a Vanilla RNN
-architecture (needless to say, weights are shared across time steps). A
-pytorch starter code is provided in homework4\_starter.py. Important:
-You are not allowed to use an RNN layer implementation from any library.
-2. (4 points) Implement a NN with Sequences Truncated to the Same
-Length: Implement a NN where sequences are truncated to have the same
-length before training. In other words, if the shortest sequence in the
-dataset has length L, all sequences should be truncated to length L
-before training. 3. (4 points) Implement a NN with Sequences Padded to
-the Same Length: Implement another variant of NN where sequences are
-padded to have the same length before training. Use appropriate padding
-techniques to ensure that all sequences have the same length, and
-implement a mechanism to ignore the padding when computing loss and
-predictions. 4. Train and Compare the Models: (a) (1 point) Train all
-three models (Vanilla RNN, Truncated NN, Padded NN) on the provided
-dataset. (b) (1 point) Use a suitable loss function for sequence
-prediction tasks, such as mean squared error (MSE) or cross-entropy. (c)
-(1 point) Train each model for a fixed number of epochs or until
-convergence. (d) (1 point) Monitor and record performance metrics, such
-as training loss, on a validation set during training. 5. Evaluate and
-Compare the Models: (a) (1 point) Evaluate the trained models on a
-separate test dataset. (b) (2 point) Compare the performance of the
-three models in terms of MSE, convergence speed, and overfitting
-tendencies. (c) (1 point) Analyze the results and discuss the advantages
-and disadvantages of each approach in terms of modeling sequences with
-varying lengths.
+Tasks:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  (4 points) Implement a Vanilla RNN: Implement a Vanilla RNN
+  architecture (needless to say, weights are shared across time steps).
+  A pytorch starter code is provided in homework4\_starter.py.
+  Important: You are not allowed to use an RNN layer implementation from
+  any library.
+\item
+  (4 points) Implement a NN with Sequences Truncated to the Same Length:
+  Implement a NN where sequences are truncated to have the same length
+  before training. In other words, if the shortest sequence in the
+  dataset has length L, all sequences should be truncated to length L
+  before training.
+\item
+  (4 points) Implement a NN with Sequences Padded to the Same Length:
+  Implement another variant of NN where sequences are padded to have the
+  same length before training. Use appropriate padding techniques to
+  ensure that all sequences have the same length, and implement a
+  mechanism to ignore the padding when computing loss and predictions.
+\item
+  Train and Compare the Models:
+
+  \begin{enumerate}
+  \def\labelenumii{(\alph{enumii})}
+  \tightlist
+  \item
+    (1 point) Train all three models (Vanilla RNN, Truncated NN, Padded
+    NN) on the provided dataset.
+  \item
+    (1 point) Use a suitable loss function for sequence prediction
+    tasks, such as mean squared error (MSE) or cross-entropy.
+  \item
+    (1 point) Train each model for a fixed number of epochs or until
+    convergence.
+  \item
+    (1 point) Monitor and record performance metrics, such as training
+    loss, on a validation set during training.
+  \end{enumerate}
+\item
+  Evaluate and Compare the Models:
+
+  \begin{enumerate}
+  \def\labelenumii{(\alph{enumii})}
+  \tightlist
+  \item
+    (1 point) Evaluate the trained models on a separate test dataset.
+  \item
+    (2 point) Compare the performance of the three models in terms of
+    MSE, convergence speed, and overfitting tendencies.
+  \item
+    (1 point) Analyze the results and discuss the advantages and
+    disadvantages of each approach in terms of modeling sequences with
+    varying lengths.
+  \end{enumerate}
+\end{enumerate}
 
 Additional Information: You can choose the specific hyperparameters for
 your models, such as the number of hidden units, learning rate, batch
@@ -1117,6 +1151,25 @@ testing each
 vanilla test!!   0.00036904800799675286 truncated test!!  0.009197115898132324 Padded Test!!  0.00724533898755908
 \end{verbatim}
 
+\subsubsection{Q5(b)}\label{q5b}
+
+Vanilla RNN: best test MSE 0.000369; 25x better than truncated
+(0.00920), 20x better than padded (0.00725). Fastest convergence---MSE
+\textless{} 0.001 by epoch 6. Truncated plateaued = 0.0085, no further
+gain. Padded intermediate---trained to = 0.001. No overfitting;
+validation loss tracked training loss.
+
+\subsubsection{Q5(c)}\label{q5c}
+
+Vanilla RNN best, shared weights, true sequence lengths are likley the
+reason. Truncated worst, cuts data beyond min length, loses long-range
+info. Padded moderate, keeps data but zero-padding adds noise.
+Per-timestep RNNs handle uneven inputs. Truncated/padded models
+larger---separate weights per timestep, harder to train with limited
+data.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
 \section{3 Fine-tune a DistilBERT model {[}20 points + 2 bonus
 points{]}}\label{fine-tune-a-distilbert-model-20-points-2-bonus-points}
 
@@ -1172,7 +1225,13 @@ Q7: (BONUS: 2 points) Apply a principled change to your code in order to
 achieve F1-macro \textgreater{} 0.50. Explain what you did and why you
 did it.
 
-\subsection{4 NOT PART OF HW4: Tensor Shapes in a Transformer Layer {[}0
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\subsection{Answer}\label{answer-2}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{4 NOT PART OF HW4: Tensor Shapes in a Transformer Layer {[}0
 points{]}}\label{not-part-of-hw4-tensor-shapes-in-a-transformer-layer-0-points}
 
 The figura above shows the transformer layer. The input size of the
@@ -1191,6 +1250,8 @@ of the parameters in this transformer layer
 For this homework, you are encouraged to experiment with various models
 and training strategies. To achieve a full score, your model must
 achieve at least 60\% accuracy on the test set.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
 
 \section{Submission}\label{submission}
 
