@@ -829,9 +829,448 @@ Q7: (BONUS: 2 points) Apply a principled change to your code in order to achieve
 
 ## Answer
 
+```python
+# connect to google drive
+from google.colab import drive
+drive.mount('/content/drive/')
+
+path = '/content/drive/MyDrive/'
+
+
+import argparse
+import logging
+import os
+import re
+from typing import Dict
+import itertools
+import requests
+
+import numpy as np
+import pandas as pd
+import nltk
+import torch
+import torch.nn as nn
+from datasets import Dataset
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import TweetTokenizer
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from sklearn.model_selection import train_test_split
+from transformers import (
+    DistilBertForSequenceClassification,
+    DistilBertTokenizerFast,
+    Trainer,
+    TrainingArguments,
+)
+from torchvision.ops import sigmoid_focal_loss
+
+
+import sys
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+
+import os
+os.chdir(path)
+
+def download_data(args):
+    """Checks if data file exists and downloads it if not."""
+    file_path = os.path.join(args.data_dir, 'Twitter.csv')
+    url = 'https://raw.githubusercontent.com/LCS2-IIITD/LESA-EACL-2021/main/data/Twitter.csv'
+
+    # Check if data_dir exists, if not, make folder
+    if not os.path.exists(args.data_dir):
+        os.makedirs(args.data_dir)
+        logger.info('Created directory: %s', args.data_dir)
+
+    if not os.path.exists(file_path):
+        logger.info('Downloading Twitter.csv from %s', url)
+        try:
+            r = requests.get(url, allow_redirects=True)
+            with open(file_path, 'wb') as f:
+                f.write(r.content)
+            logger.info('Downloaded Twitter.csv to %s', file_path)
+        except requests.exceptions.RequestException as e:
+            logger.error('Error downloading file: %s', e)
+            raise
+
+    args.data_path = file_path
+
+def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply light preprocessing and add `clean_text` column."""
+    df = df.copy()
+    df['hashtag'] = df['tweet_text'].apply(lambda x: re.findall(r'#(\w+)', str(x)))
+    df['clean_text'] = df['tweet_text'].apply(lambda x: re.sub(r'http\S+|www\S+|@[\S]+', '', str(x)))
+
+    tokenizer = TweetTokenizer()
+    lemmatizer = WordNetLemmatizer()
+    stop_words = set(stopwords.words('english'))
+
+    def tok_and_clean(text: str):
+        toks = tokenizer.tokenize(text.lower())
+        toks = [lemmatizer.lemmatize(t) for t in toks if t.isalpha()]
+        toks = [t for t in toks if t not in stop_words]
+        return ' '.join(toks)
+
+    df['clean_text'] = df['clean_text'].apply(tok_and_clean)
+    return df
+
+def compute_metrics(pred) -> Dict[str, float]:
+    logits, labels = pred
+    # handle logits shape (N,1) or (N,)
+    logits = np.asarray(logits)
+    if logits.ndim > 1:
+        logits = logits.reshape(-1)
+    probs = 1.0 / (1.0 + np.exp(-logits))
+    preds = (probs >= 0.5).astype(int)
+    acc = accuracy_score(labels, preds)
+    precision_arr, recall_arr, f1_arr, _ = precision_recall_fscore_support(labels, preds, labels=[0, 1], zero_division=0)
+
+    metrics = {
+        'accuracy': float(acc),
+        'precision_class_0': float(precision_arr[0]),
+        'precision_class_1': float(precision_arr[1]),
+        'recall_class_0': float(recall_arr[0]),
+        'recall_class_1': float(recall_arr[1]),
+        'f1_class_0': float(f1_arr[0]),
+        'f1_class_1': float(f1_arr[1]),
+    }
+    metrics['f1'] = float(np.mean([metrics['f1_class_0'], metrics['f1_class_1']]))
+    return metrics
+
+
+#just here for troubleshooting
+def compute_metrics_debug(eval_pred) -> Dict[str, float]:
+
+    if isinstance(eval_pred, tuple):
+        predictions, labels = eval_pred
+    else:
+        predictions, labels = eval_pred.predictions, eval_pred.label_ids
+
+
+    if isinstance(predictions, tuple):
+        predictions = predictions[0]
+
+    predictions = np.asarray(predictions)
+    labels = np.asarray(labels).reshape(-1)
+
+    if predictions.ndim == 2 and predictions.shape[-1] > 1:
+        preds = np.argmax(predictions, axis=-1)
+    else:
+        logits_1d = predictions.reshape(-1)
+        probs = 1.0 / (1.0 + np.exp(-logits_1d))
+        preds = (probs >= 0.5).astype(int)
+
+
+    assert preds.shape[0] == labels.shape[0], f"preds {preds.shape} vs labels {labels.shape}"
+
+    acc = accuracy_score(labels, preds)
+    p, r, f1, _ = precision_recall_fscore_support(
+        labels, preds, labels=[0, 1], average='macro', zero_division=0
+    )
+    return {
+        'accuracy': float(acc),
+        'precision': float(p),
+        'recall': float(r),
+        'f1': float(f1),
+    }
 
 
 
+
+
+
+def load_pretrained_and_finetune(args):
+    nltk.download('stopwords')
+    nltk.download('wordnet')
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    logger.info('Loading data from %s', args.data_path)
+    df = pd.read_csv(args.data_path)
+    if 'tweet_text' not in df.columns or 'claim' not in df.columns:
+        raise ValueError("Input CSV must contain 'tweet_text' and 'claim' columns")
+
+    # print(df.head(10)) # uncomment to print first 10 rows
+    df = preprocess(df)
+    df = df[['clean_text', 'claim']].rename(columns={'claim': 'labels'})
+
+    # Q2: split the code in train, val and eval (test) sets stratified by classes
+    # BEGIN YOUR CODE HERE (~2 lines)
+
+    train_val_df, test_df = train_test_split(
+    df, test_size=args.test_size, stratify=df['labels'], random_state=args.seed)
+    train_df, val_df = train_test_split(train_val_df,test_size=args.val_size / (1.0 - args.test_size),stratify=train_val_df['labels'],random_state=args.seed)
+    
+    # END YOUR CODE HERE
+
+    tokenizer = DistilBertTokenizerFast.from_pretrained(args.model_name)
+
+    def tokenize_batch(batch):
+        return tokenizer(batch['clean_text'], truncation=True, padding='max_length', max_length=args.max_length)
+
+    # Q3: Convert sets to HuggingFace Dataset and tokenize using function tokenize_batch
+    # Use variable names: train_ds, val_ds, eval_ds
+    # BEGIN YOUR CODE HERE (~6 lines)
+
+    train_ds = Dataset.from_pandas(train_df.reset_index(drop=True))
+    val_ds   = Dataset.from_pandas(val_df.reset_index(drop=True))
+    eval_ds  = Dataset.from_pandas(test_df.reset_index(drop=True))  # "eval_ds" = test split
+
+    train_ds = train_ds.map(tokenize_batch, batched=True)
+    val_ds   = val_ds.map(tokenize_batch, batched=True)
+    eval_ds  = eval_ds.map(tokenize_batch, batched=True)
+
+    # keep only the tensor columns the Trainer needs
+    keep_cols = ['input_ids', 'attention_mask', 'labels']
+    train_ds = train_ds.remove_columns([c for c in train_ds.column_names if c not in keep_cols]).with_format('torch')
+    val_ds   = val_ds.remove_columns([c for c in val_ds.column_names if c not in keep_cols]).with_format('torch')
+    eval_ds  = eval_ds.remove_columns([c for c in eval_ds.column_names if c not in keep_cols]).with_format('torch')
+
+
+
+    # END YOUR CODE HERE
+
+    # Kepe only the necessary columns in each dataset
+    #keep_cols = ['input_ids', 'attention_mask', 'labels']
+    #train_ds = train_ds.remove_columns([c for c in train_ds.column_names if c not in keep_cols]).with_format('torch')
+    #val_ds = val_ds.remove_columns([c for c in val_ds.column_names if c not in keep_cols]).with_format('torch')
+    #test_ds = test_ds.remove_columns([c for c in test_ds.column_names if c not in keep_cols]).with_format('torch')
+
+    # We'll create models inside the grid loop; keep tokenizer ready
+
+    # Device selection: prefer CUDA, then Apple MPS, then CPU
+    if hasattr(torch, 'cuda') and torch.cuda.is_available():
+        device = 'cuda'
+    else:
+        try:
+            if getattr(torch, 'has_mps', False) and torch.backends.mps.is_available():
+                device = 'mps'
+            else:
+                device = 'cpu'
+        except Exception:
+            device = 'cpu'
+
+    no_cuda = False if device in ('cuda', 'mps') else True
+
+    # Note: model instances are created per-trial inside the grid search loop below.
+
+    # Grid search over learning rate (no focal gamma needed)
+    best_score = -float('inf')
+    best_params = None
+
+    # Q4: Implement grid search for at least one hyperparameter
+
+    # Build hyperparameter lists
+    best_params = None
+    best_score = -float('inf')
+
+    if args.grid_search:
+        lrs = [0.001, 0.0001]
+        bss = [8,32]
+        wds = [0.0, 0.03]
+        nes = [1, 3]
+        search_space = itertools.product(lrs, bss, wds, nes)
+    else:
+        search_space = [(args.learning_rate, args.batch_size, args.weight_decay, args.num_train_epochs)]
+
+    # BEGIN YOUR CODE HERE (~1-7 lines)
+
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+    # PRO TIP: you can use itertools.product to create a master list of all combos for grid search
+
+    for lr, bs, wd, ne in search_space:# COMPLETE THIS LINE
+        logger.info(f"Trial: lr={lr}, bs={bs}, wd={wd}, epochs={ne}")
+
+        # instantiate fresh pretrained model for each trial
+        # NOTE: if num_labels=2, CrossEntropy is assumed by default Trainer;
+        # if num_labels=1, you will have to implement a CustomTrainer to override MSE as loss
+        model = DistilBertForSequenceClassification.from_pretrained(
+        args.model_name, num_labels=2
+    )
+
+        # Freeze base params and unfreeze classifier layers
+        for name, p in model.named_parameters():
+            p.requires_grad = False
+        for name, p in model.named_parameters():
+            if name.startswith('classifier') or 'pre_classifier' in name:
+                p.requires_grad = True
+
+        # trial output dir
+        trial_output_dir = os.path.join(args.output_dir, f'CHOOSE_EXP_NAME')
+        os.makedirs(trial_output_dir, exist_ok=True)
+
+        training_args = TrainingArguments(
+            output_dir=trial_output_dir,
+            per_device_train_batch_size=bs,
+            per_device_eval_batch_size=bs,
+            learning_rate=lr,
+            num_train_epochs=ne,
+            weight_decay=wd,
+            logging_dir=os.path.join(trial_output_dir, "logs"),  # safe on old & new
+        )
+
+        # initialize the Trainer (~5 lines) or CustomTrainer (~6-8 lines)
+        trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_ds,
+        eval_dataset=val_ds,
+        compute_metrics=compute_metrics_debug
+     # COMPLETE THIS LINE
+        )
+        model.to(device)
+        # move model to device if possible
+        # BEGIN YOUR CODE HERE (~1-4 lines)
+        trainer.train()
+        metrics = trainer.evaluate(eval_dataset=val_ds)
+        score = metrics.get('eval_f1', -float('inf'))
+
+
+        # END YOUR CODE HERE
+
+        # train, evaluate, compute score, update best score
+        # BEGIN YOUR CODE HERE (~6-9 lines)
+        if score > best_score:
+            best_score = score
+            best_params = {'lr': lr, 'bs': bs, 'wd': wd, 'epochs': ne}
+            print()
+        # END YOUR CODE HERE
+
+    # END YOUR CODE HERE
+
+    if best_params is None:
+        raise RuntimeError('Grid search failed to produce any candidate best params')
+
+    logger.info(best_params)
+
+        # Q5: Final training on train+val with best hyperparameters
+    # instantiate pretrained model and freeze appropriate layers
+    # BEGIN YOUR CODE HERE (~6 lines)
+    model = DistilBertForSequenceClassification.from_pretrained(args.model_name, num_labels=2)
+
+    for name, p in model.named_parameters():
+        p.requires_grad = False
+    for name, p in model.named_parameters():
+        if name.startswith('classifier') or 'pre_classifier' in name:
+            p.requires_grad = True
+
+    # END YOUR CODE HE RE
+
+    # combine train_ds and val_df for final training (i.e., original train_df)
+    # BEGIN YOUR CODE HERE (~4 lines)
+    from datasets import concatenate_datasets
+    trainval_ds = concatenate_datasets([train_ds, val_ds]).with_format('torch')
+    final_out_dir = os.path.join(args.output_dir, 'final')
+    os.makedirs(final_out_dir, exist_ok=True)
+    # END YOUR CODE HERE
+
+    # set the training arguments
+    # BEGIN YOUR CODE HERE (~9-14 lines)
+    final_args = TrainingArguments(
+        output_dir=final_out_dir,
+        per_device_train_batch_size=best_params['bs'],
+        per_device_eval_batch_size=best_params['bs'],
+        learning_rate=best_params['lr'],
+        num_train_epochs=best_params['epochs'],
+        weight_decay=best_params['wd'],
+        logging_dir=os.path.join(final_out_dir, "logs"),
+    )
+    # END YOUR CODE HERE
+
+    # initialize the Trainer (~5 lines) or CustomTrainer (~6-8 lines)
+    final_trainer = Trainer(
+        model=model,
+        args=final_args,
+        train_dataset=trainval_ds,
+        eval_dataset=eval_ds,          # held-out test split
+        compute_metrics=compute_metrics_debug
+    )
+
+    final_trainer.train()
+    test_metrics = final_trainer.evaluate(eval_dataset=eval_ds)
+    logger.info(f'Final TEST metrics: {test_metrics}')
+    print("FINAL TEST METRICS (Q5 Results):")
+    for key, value in test_metrics.items():
+      print(f"{key}: {value:.4f}")
+    
+    final_trainer.save_model(args.output_dir)
+    # move model to device if possible
+    # BEGIN YOUR CODE HERE (~1-4 lines)
+    # END YOUR CODE HERE
+
+    # train, evaluate, save model
+    # BEGIN YOUR CODE HERE (~3 lines)
+    # END YOUR CODE HERE
+    trainer.train()
+    trainer.save_model(args.output_dir)
+    return test_metrics
+
+
+
+
+# if __name__ == '__main__':
+parser = argparse.ArgumentParser()
+parser.add_argument('--data-dir', type=str, required=True, help='Path to CSV with tweet_text and claim columns')
+parser.add_argument('--output-dir', type=str, default='finetuned', help='Where to save model and tokenizer')
+parser.add_argument('--model-name', type=str, default='distilbert-base-uncased', help='Pretrained model name')
+# Q1. Add relevant arguments
+
+
+parser.add_argument('--max-length', type=int, default=128, help='max number of tolkens')
+parser.add_argument('--num-train-epochs', type=int, default=3, help='total number of epochs to run through')
+parser.add_argument('--weight-decay', type=float, default=0.01, help='weight decay strength')
+parser.add_argument('--grid-search', action='store_true', help='do a grid search with hyperparameters')
+parser.add_argument('--val-size', type=float, default=0.15, help='portion of data reserved for validation set')
+parser.add_argument('--test-size', type=float, default=0.15, help='portion of data reserved for tests')
+parser.add_argument('--seed', type=int, default=42, help='Random seed')
+parser.add_argument('--eval-steps', type=int, default=100, help='evaluate evcery n amount of steps')
+parser.add_argument('--logging-steps', type=int, default=50, help='how loften to log metrics')
+parser.add_argument('--batch-size', type=int, default=16, help='number of samples processed per device')
+parser.add_argument('--learning-rate', type=float, default=2e-5, help='learning rate for the optimizer')
+
+
+# BEGIN YOUR CODE HERE (~5-15 lines)
+# END YOUR CODE HERE
+
+args = parser.parse_args(['--data-dir', 'data', '--grid-search'])
+
+print(args)
+
+# download file if it doesn't exist yet
+download_data(args)
+
+# load pre-trained and finetune
+test_metrics = load_pretrained_and_finetune(args)
+
+
+
+#| label: prob3
+
+accuracy = test_metrics.get('eval_accuracy', 0)
+f1 = test_metrics.get('eval_f1', 0)
+precision = test_metrics.get('eval_precision', 0)
+recall = test_metrics.get('eval_recall', 0)
+print(f"MODEL PERFORMANCE:")
+print(f"   Accuracy: {accuracy:.2%}")
+print(f"   F1 Score: {f1:.4f}")
+print(f"   Precision: {precision:.4f}")
+print(f"   Recall: {recall:.4f}")
+
+```
+
+{{< embed problem_3.ipynb#prob3 >}}
+
+### Q6
+
+Accuracy 87.45%, above 60% target. F1 = 0.4769 (<0.50) due to imbalance between precision (0.7708) and recall (0.5049). High precision, low recall meaning conservative positive predictions; catches true medical tweets but misses many. Common in imbalanced datasets with dominant negative class.
+
+Challenges: strong class imbalance (few medical tweets), noisy text (hashtags, slang, abbreviations), limited training (3 epochs per grid search config). Only classification head trained—base model frozen, limiting domain adaptation.
+
+Improvements: add class weights, use focal loss, train longer (5–10 epochs), unfreeze more layers, augment minority data, tune threshold (<0.5), or switch to larger model (e.g., BERT). Grid search tested 16 setups; best config used for final combined train+val training.
 
 ---
 

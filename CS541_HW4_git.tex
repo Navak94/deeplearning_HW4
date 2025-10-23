@@ -1229,6 +1229,468 @@ did it.
 
 \subsection{Answer}\label{answer-2}
 
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# connect to google drive}
+\ImportTok{from}\NormalTok{ google.colab }\ImportTok{import}\NormalTok{ drive}
+\NormalTok{drive.mount(}\StringTok{\textquotesingle{}/content/drive/\textquotesingle{}}\NormalTok{)}
+
+\NormalTok{path }\OperatorTok{=} \StringTok{\textquotesingle{}/content/drive/MyDrive/\textquotesingle{}}
+
+
+\ImportTok{import}\NormalTok{ argparse}
+\ImportTok{import}\NormalTok{ logging}
+\ImportTok{import}\NormalTok{ os}
+\ImportTok{import}\NormalTok{ re}
+\ImportTok{from}\NormalTok{ typing }\ImportTok{import}\NormalTok{ Dict}
+\ImportTok{import}\NormalTok{ itertools}
+\ImportTok{import}\NormalTok{ requests}
+
+\ImportTok{import}\NormalTok{ numpy }\ImportTok{as}\NormalTok{ np}
+\ImportTok{import}\NormalTok{ pandas }\ImportTok{as}\NormalTok{ pd}
+\ImportTok{import}\NormalTok{ nltk}
+\ImportTok{import}\NormalTok{ torch}
+\ImportTok{import}\NormalTok{ torch.nn }\ImportTok{as}\NormalTok{ nn}
+\ImportTok{from}\NormalTok{ datasets }\ImportTok{import}\NormalTok{ Dataset}
+\ImportTok{from}\NormalTok{ nltk.corpus }\ImportTok{import}\NormalTok{ stopwords}
+\ImportTok{from}\NormalTok{ nltk.stem }\ImportTok{import}\NormalTok{ WordNetLemmatizer}
+\ImportTok{from}\NormalTok{ nltk.tokenize }\ImportTok{import}\NormalTok{ TweetTokenizer}
+\ImportTok{from}\NormalTok{ sklearn.metrics }\ImportTok{import}\NormalTok{ accuracy\_score, precision\_recall\_fscore\_support}
+\ImportTok{from}\NormalTok{ sklearn.model\_selection }\ImportTok{import}\NormalTok{ train\_test\_split}
+\ImportTok{from}\NormalTok{ transformers }\ImportTok{import}\NormalTok{ (}
+\NormalTok{    DistilBertForSequenceClassification,}
+\NormalTok{    DistilBertTokenizerFast,}
+\NormalTok{    Trainer,}
+\NormalTok{    TrainingArguments,}
+\NormalTok{)}
+\ImportTok{from}\NormalTok{ torchvision.ops }\ImportTok{import}\NormalTok{ sigmoid\_focal\_loss}
+
+
+\ImportTok{import}\NormalTok{ sys}
+\NormalTok{logging.basicConfig(level}\OperatorTok{=}\NormalTok{logging.INFO)}
+\NormalTok{logger }\OperatorTok{=}\NormalTok{ logging.getLogger(}\VariableTok{\_\_name\_\_}\NormalTok{)}
+\NormalTok{logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))}
+
+\ImportTok{import}\NormalTok{ os}
+\NormalTok{os.chdir(path)}
+
+\KeywordTok{def}\NormalTok{ download\_data(args):}
+    \CommentTok{"""Checks if data file exists and downloads it if not."""}
+\NormalTok{    file\_path }\OperatorTok{=}\NormalTok{ os.path.join(args.data\_dir, }\StringTok{\textquotesingle{}Twitter.csv\textquotesingle{}}\NormalTok{)}
+\NormalTok{    url }\OperatorTok{=} \StringTok{\textquotesingle{}https://raw.githubusercontent.com/LCS2{-}IIITD/LESA{-}EACL{-}2021/main/data/Twitter.csv\textquotesingle{}}
+
+    \CommentTok{\# Check if data\_dir exists, if not, make folder}
+    \ControlFlowTok{if} \KeywordTok{not}\NormalTok{ os.path.exists(args.data\_dir):}
+\NormalTok{        os.makedirs(args.data\_dir)}
+\NormalTok{        logger.info(}\StringTok{\textquotesingle{}Created directory: }\SpecialCharTok{\%s}\StringTok{\textquotesingle{}}\NormalTok{, args.data\_dir)}
+
+    \ControlFlowTok{if} \KeywordTok{not}\NormalTok{ os.path.exists(file\_path):}
+\NormalTok{        logger.info(}\StringTok{\textquotesingle{}Downloading Twitter.csv from }\SpecialCharTok{\%s}\StringTok{\textquotesingle{}}\NormalTok{, url)}
+        \ControlFlowTok{try}\NormalTok{:}
+\NormalTok{            r }\OperatorTok{=}\NormalTok{ requests.get(url, allow\_redirects}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+            \ControlFlowTok{with} \BuiltInTok{open}\NormalTok{(file\_path, }\StringTok{\textquotesingle{}wb\textquotesingle{}}\NormalTok{) }\ImportTok{as}\NormalTok{ f:}
+\NormalTok{                f.write(r.content)}
+\NormalTok{            logger.info(}\StringTok{\textquotesingle{}Downloaded Twitter.csv to }\SpecialCharTok{\%s}\StringTok{\textquotesingle{}}\NormalTok{, file\_path)}
+        \ControlFlowTok{except}\NormalTok{ requests.exceptions.RequestException }\ImportTok{as}\NormalTok{ e:}
+\NormalTok{            logger.error(}\StringTok{\textquotesingle{}Error downloading file: }\SpecialCharTok{\%s}\StringTok{\textquotesingle{}}\NormalTok{, e)}
+            \ControlFlowTok{raise}
+
+\NormalTok{    args.data\_path }\OperatorTok{=}\NormalTok{ file\_path}
+
+\KeywordTok{def}\NormalTok{ preprocess(df: pd.DataFrame) }\OperatorTok{{-}\textgreater{}}\NormalTok{ pd.DataFrame:}
+    \CommentTok{"""Apply light preprocessing and add \textasciigrave{}clean\_text\textasciigrave{} column."""}
+\NormalTok{    df }\OperatorTok{=}\NormalTok{ df.copy()}
+\NormalTok{    df[}\StringTok{\textquotesingle{}hashtag\textquotesingle{}}\NormalTok{] }\OperatorTok{=}\NormalTok{ df[}\StringTok{\textquotesingle{}tweet\_text\textquotesingle{}}\NormalTok{].}\BuiltInTok{apply}\NormalTok{(}\KeywordTok{lambda}\NormalTok{ x: re.findall(}\VerbatimStringTok{r\textquotesingle{}\#(\textbackslash{}w+)\textquotesingle{}}\NormalTok{, }\BuiltInTok{str}\NormalTok{(x)))}
+\NormalTok{    df[}\StringTok{\textquotesingle{}clean\_text\textquotesingle{}}\NormalTok{] }\OperatorTok{=}\NormalTok{ df[}\StringTok{\textquotesingle{}tweet\_text\textquotesingle{}}\NormalTok{].}\BuiltInTok{apply}\NormalTok{(}\KeywordTok{lambda}\NormalTok{ x: re.sub(}\VerbatimStringTok{r\textquotesingle{}http\textbackslash{}S+|www\textbackslash{}S+|@[\textbackslash{}S]+\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}\textquotesingle{}}\NormalTok{, }\BuiltInTok{str}\NormalTok{(x)))}
+
+\NormalTok{    tokenizer }\OperatorTok{=}\NormalTok{ TweetTokenizer()}
+\NormalTok{    lemmatizer }\OperatorTok{=}\NormalTok{ WordNetLemmatizer()}
+\NormalTok{    stop\_words }\OperatorTok{=} \BuiltInTok{set}\NormalTok{(stopwords.words(}\StringTok{\textquotesingle{}english\textquotesingle{}}\NormalTok{))}
+
+    \KeywordTok{def}\NormalTok{ tok\_and\_clean(text: }\BuiltInTok{str}\NormalTok{):}
+\NormalTok{        toks }\OperatorTok{=}\NormalTok{ tokenizer.tokenize(text.lower())}
+\NormalTok{        toks }\OperatorTok{=}\NormalTok{ [lemmatizer.lemmatize(t) }\ControlFlowTok{for}\NormalTok{ t }\KeywordTok{in}\NormalTok{ toks }\ControlFlowTok{if}\NormalTok{ t.isalpha()]}
+\NormalTok{        toks }\OperatorTok{=}\NormalTok{ [t }\ControlFlowTok{for}\NormalTok{ t }\KeywordTok{in}\NormalTok{ toks }\ControlFlowTok{if}\NormalTok{ t }\KeywordTok{not} \KeywordTok{in}\NormalTok{ stop\_words]}
+        \ControlFlowTok{return} \StringTok{\textquotesingle{} \textquotesingle{}}\NormalTok{.join(toks)}
+
+\NormalTok{    df[}\StringTok{\textquotesingle{}clean\_text\textquotesingle{}}\NormalTok{] }\OperatorTok{=}\NormalTok{ df[}\StringTok{\textquotesingle{}clean\_text\textquotesingle{}}\NormalTok{].}\BuiltInTok{apply}\NormalTok{(tok\_and\_clean)}
+    \ControlFlowTok{return}\NormalTok{ df}
+
+\KeywordTok{def}\NormalTok{ compute\_metrics(pred) }\OperatorTok{{-}\textgreater{}}\NormalTok{ Dict[}\BuiltInTok{str}\NormalTok{, }\BuiltInTok{float}\NormalTok{]:}
+\NormalTok{    logits, labels }\OperatorTok{=}\NormalTok{ pred}
+    \CommentTok{\# handle logits shape (N,1) or (N,)}
+\NormalTok{    logits }\OperatorTok{=}\NormalTok{ np.asarray(logits)}
+    \ControlFlowTok{if}\NormalTok{ logits.ndim }\OperatorTok{\textgreater{}} \DecValTok{1}\NormalTok{:}
+\NormalTok{        logits }\OperatorTok{=}\NormalTok{ logits.reshape(}\OperatorTok{{-}}\DecValTok{1}\NormalTok{)}
+\NormalTok{    probs }\OperatorTok{=} \FloatTok{1.0} \OperatorTok{/}\NormalTok{ (}\FloatTok{1.0} \OperatorTok{+}\NormalTok{ np.exp(}\OperatorTok{{-}}\NormalTok{logits))}
+\NormalTok{    preds }\OperatorTok{=}\NormalTok{ (probs }\OperatorTok{\textgreater{}=} \FloatTok{0.5}\NormalTok{).astype(}\BuiltInTok{int}\NormalTok{)}
+\NormalTok{    acc }\OperatorTok{=}\NormalTok{ accuracy\_score(labels, preds)}
+\NormalTok{    precision\_arr, recall\_arr, f1\_arr, \_ }\OperatorTok{=}\NormalTok{ precision\_recall\_fscore\_support(labels, preds, labels}\OperatorTok{=}\NormalTok{[}\DecValTok{0}\NormalTok{, }\DecValTok{1}\NormalTok{], zero\_division}\OperatorTok{=}\DecValTok{0}\NormalTok{)}
+
+\NormalTok{    metrics }\OperatorTok{=}\NormalTok{ \{}
+        \StringTok{\textquotesingle{}accuracy\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(acc),}
+        \StringTok{\textquotesingle{}precision\_class\_0\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(precision\_arr[}\DecValTok{0}\NormalTok{]),}
+        \StringTok{\textquotesingle{}precision\_class\_1\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(precision\_arr[}\DecValTok{1}\NormalTok{]),}
+        \StringTok{\textquotesingle{}recall\_class\_0\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(recall\_arr[}\DecValTok{0}\NormalTok{]),}
+        \StringTok{\textquotesingle{}recall\_class\_1\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(recall\_arr[}\DecValTok{1}\NormalTok{]),}
+        \StringTok{\textquotesingle{}f1\_class\_0\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(f1\_arr[}\DecValTok{0}\NormalTok{]),}
+        \StringTok{\textquotesingle{}f1\_class\_1\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(f1\_arr[}\DecValTok{1}\NormalTok{]),}
+\NormalTok{    \}}
+\NormalTok{    metrics[}\StringTok{\textquotesingle{}f1\textquotesingle{}}\NormalTok{] }\OperatorTok{=} \BuiltInTok{float}\NormalTok{(np.mean([metrics[}\StringTok{\textquotesingle{}f1\_class\_0\textquotesingle{}}\NormalTok{], metrics[}\StringTok{\textquotesingle{}f1\_class\_1\textquotesingle{}}\NormalTok{]]))}
+    \ControlFlowTok{return}\NormalTok{ metrics}
+
+
+\CommentTok{\#just here for troubleshooting}
+\KeywordTok{def}\NormalTok{ compute\_metrics\_debug(eval\_pred) }\OperatorTok{{-}\textgreater{}}\NormalTok{ Dict[}\BuiltInTok{str}\NormalTok{, }\BuiltInTok{float}\NormalTok{]:}
+
+    \ControlFlowTok{if} \BuiltInTok{isinstance}\NormalTok{(eval\_pred, }\BuiltInTok{tuple}\NormalTok{):}
+\NormalTok{        predictions, labels }\OperatorTok{=}\NormalTok{ eval\_pred}
+    \ControlFlowTok{else}\NormalTok{:}
+\NormalTok{        predictions, labels }\OperatorTok{=}\NormalTok{ eval\_pred.predictions, eval\_pred.label\_ids}
+
+
+    \ControlFlowTok{if} \BuiltInTok{isinstance}\NormalTok{(predictions, }\BuiltInTok{tuple}\NormalTok{):}
+\NormalTok{        predictions }\OperatorTok{=}\NormalTok{ predictions[}\DecValTok{0}\NormalTok{]}
+
+\NormalTok{    predictions }\OperatorTok{=}\NormalTok{ np.asarray(predictions)}
+\NormalTok{    labels }\OperatorTok{=}\NormalTok{ np.asarray(labels).reshape(}\OperatorTok{{-}}\DecValTok{1}\NormalTok{)}
+
+    \ControlFlowTok{if}\NormalTok{ predictions.ndim }\OperatorTok{==} \DecValTok{2} \KeywordTok{and}\NormalTok{ predictions.shape[}\OperatorTok{{-}}\DecValTok{1}\NormalTok{] }\OperatorTok{\textgreater{}} \DecValTok{1}\NormalTok{:}
+\NormalTok{        preds }\OperatorTok{=}\NormalTok{ np.argmax(predictions, axis}\OperatorTok{={-}}\DecValTok{1}\NormalTok{)}
+    \ControlFlowTok{else}\NormalTok{:}
+\NormalTok{        logits\_1d }\OperatorTok{=}\NormalTok{ predictions.reshape(}\OperatorTok{{-}}\DecValTok{1}\NormalTok{)}
+\NormalTok{        probs }\OperatorTok{=} \FloatTok{1.0} \OperatorTok{/}\NormalTok{ (}\FloatTok{1.0} \OperatorTok{+}\NormalTok{ np.exp(}\OperatorTok{{-}}\NormalTok{logits\_1d))}
+\NormalTok{        preds }\OperatorTok{=}\NormalTok{ (probs }\OperatorTok{\textgreater{}=} \FloatTok{0.5}\NormalTok{).astype(}\BuiltInTok{int}\NormalTok{)}
+
+
+    \ControlFlowTok{assert}\NormalTok{ preds.shape[}\DecValTok{0}\NormalTok{] }\OperatorTok{==}\NormalTok{ labels.shape[}\DecValTok{0}\NormalTok{], }\SpecialStringTok{f"preds }\SpecialCharTok{\{}\NormalTok{preds}\SpecialCharTok{.}\NormalTok{shape}\SpecialCharTok{\}}\SpecialStringTok{ vs labels }\SpecialCharTok{\{}\NormalTok{labels}\SpecialCharTok{.}\NormalTok{shape}\SpecialCharTok{\}}\SpecialStringTok{"}
+
+\NormalTok{    acc }\OperatorTok{=}\NormalTok{ accuracy\_score(labels, preds)}
+\NormalTok{    p, r, f1, \_ }\OperatorTok{=}\NormalTok{ precision\_recall\_fscore\_support(}
+\NormalTok{        labels, preds, labels}\OperatorTok{=}\NormalTok{[}\DecValTok{0}\NormalTok{, }\DecValTok{1}\NormalTok{], average}\OperatorTok{=}\StringTok{\textquotesingle{}macro\textquotesingle{}}\NormalTok{, zero\_division}\OperatorTok{=}\DecValTok{0}
+\NormalTok{    )}
+    \ControlFlowTok{return}\NormalTok{ \{}
+        \StringTok{\textquotesingle{}accuracy\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(acc),}
+        \StringTok{\textquotesingle{}precision\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(p),}
+        \StringTok{\textquotesingle{}recall\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(r),}
+        \StringTok{\textquotesingle{}f1\textquotesingle{}}\NormalTok{: }\BuiltInTok{float}\NormalTok{(f1),}
+\NormalTok{    \}}
+
+
+
+
+
+
+\KeywordTok{def}\NormalTok{ load\_pretrained\_and\_finetune(args):}
+\NormalTok{    nltk.download(}\StringTok{\textquotesingle{}stopwords\textquotesingle{}}\NormalTok{)}
+\NormalTok{    nltk.download(}\StringTok{\textquotesingle{}wordnet\textquotesingle{}}\NormalTok{)}
+
+\NormalTok{    os.makedirs(args.output\_dir, exist\_ok}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+
+\NormalTok{    logger.info(}\StringTok{\textquotesingle{}Loading data from }\SpecialCharTok{\%s}\StringTok{\textquotesingle{}}\NormalTok{, args.data\_path)}
+\NormalTok{    df }\OperatorTok{=}\NormalTok{ pd.read\_csv(args.data\_path)}
+    \ControlFlowTok{if} \StringTok{\textquotesingle{}tweet\_text\textquotesingle{}} \KeywordTok{not} \KeywordTok{in}\NormalTok{ df.columns }\KeywordTok{or} \StringTok{\textquotesingle{}claim\textquotesingle{}} \KeywordTok{not} \KeywordTok{in}\NormalTok{ df.columns:}
+        \ControlFlowTok{raise} \PreprocessorTok{ValueError}\NormalTok{(}\StringTok{"Input CSV must contain \textquotesingle{}tweet\_text\textquotesingle{} and \textquotesingle{}claim\textquotesingle{} columns"}\NormalTok{)}
+
+    \CommentTok{\# print(df.head(10)) \# uncomment to print first 10 rows}
+\NormalTok{    df }\OperatorTok{=}\NormalTok{ preprocess(df)}
+\NormalTok{    df }\OperatorTok{=}\NormalTok{ df[[}\StringTok{\textquotesingle{}clean\_text\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}claim\textquotesingle{}}\NormalTok{]].rename(columns}\OperatorTok{=}\NormalTok{\{}\StringTok{\textquotesingle{}claim\textquotesingle{}}\NormalTok{: }\StringTok{\textquotesingle{}labels\textquotesingle{}}\NormalTok{\})}
+
+    \CommentTok{\# Q2: split the code in train, val and eval (test) sets stratified by classes}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}2 lines)}
+
+\NormalTok{    train\_val\_df, test\_df }\OperatorTok{=}\NormalTok{ train\_test\_split(}
+\NormalTok{    df, test\_size}\OperatorTok{=}\NormalTok{args.test\_size, stratify}\OperatorTok{=}\NormalTok{df[}\StringTok{\textquotesingle{}labels\textquotesingle{}}\NormalTok{], random\_state}\OperatorTok{=}\NormalTok{args.seed)}
+\NormalTok{    train\_df, val\_df }\OperatorTok{=}\NormalTok{ train\_test\_split(train\_val\_df,test\_size}\OperatorTok{=}\NormalTok{args.val\_size }\OperatorTok{/}\NormalTok{ (}\FloatTok{1.0} \OperatorTok{{-}}\NormalTok{ args.test\_size),stratify}\OperatorTok{=}\NormalTok{train\_val\_df[}\StringTok{\textquotesingle{}labels\textquotesingle{}}\NormalTok{],random\_state}\OperatorTok{=}\NormalTok{args.seed)}
+    
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+\NormalTok{    tokenizer }\OperatorTok{=}\NormalTok{ DistilBertTokenizerFast.from\_pretrained(args.model\_name)}
+
+    \KeywordTok{def}\NormalTok{ tokenize\_batch(batch):}
+        \ControlFlowTok{return}\NormalTok{ tokenizer(batch[}\StringTok{\textquotesingle{}clean\_text\textquotesingle{}}\NormalTok{], truncation}\OperatorTok{=}\VariableTok{True}\NormalTok{, padding}\OperatorTok{=}\StringTok{\textquotesingle{}max\_length\textquotesingle{}}\NormalTok{, max\_length}\OperatorTok{=}\NormalTok{args.max\_length)}
+
+    \CommentTok{\# Q3: Convert sets to HuggingFace Dataset and tokenize using function tokenize\_batch}
+    \CommentTok{\# Use variable names: train\_ds, val\_ds, eval\_ds}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}6 lines)}
+
+\NormalTok{    train\_ds }\OperatorTok{=}\NormalTok{ Dataset.from\_pandas(train\_df.reset\_index(drop}\OperatorTok{=}\VariableTok{True}\NormalTok{))}
+\NormalTok{    val\_ds   }\OperatorTok{=}\NormalTok{ Dataset.from\_pandas(val\_df.reset\_index(drop}\OperatorTok{=}\VariableTok{True}\NormalTok{))}
+\NormalTok{    eval\_ds  }\OperatorTok{=}\NormalTok{ Dataset.from\_pandas(test\_df.reset\_index(drop}\OperatorTok{=}\VariableTok{True}\NormalTok{))  }\CommentTok{\# "eval\_ds" = test split}
+
+\NormalTok{    train\_ds }\OperatorTok{=}\NormalTok{ train\_ds.}\BuiltInTok{map}\NormalTok{(tokenize\_batch, batched}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+\NormalTok{    val\_ds   }\OperatorTok{=}\NormalTok{ val\_ds.}\BuiltInTok{map}\NormalTok{(tokenize\_batch, batched}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+\NormalTok{    eval\_ds  }\OperatorTok{=}\NormalTok{ eval\_ds.}\BuiltInTok{map}\NormalTok{(tokenize\_batch, batched}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+
+    \CommentTok{\# keep only the tensor columns the Trainer needs}
+\NormalTok{    keep\_cols }\OperatorTok{=}\NormalTok{ [}\StringTok{\textquotesingle{}input\_ids\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}attention\_mask\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}labels\textquotesingle{}}\NormalTok{]}
+\NormalTok{    train\_ds }\OperatorTok{=}\NormalTok{ train\_ds.remove\_columns([c }\ControlFlowTok{for}\NormalTok{ c }\KeywordTok{in}\NormalTok{ train\_ds.column\_names }\ControlFlowTok{if}\NormalTok{ c }\KeywordTok{not} \KeywordTok{in}\NormalTok{ keep\_cols]).with\_format(}\StringTok{\textquotesingle{}torch\textquotesingle{}}\NormalTok{)}
+\NormalTok{    val\_ds   }\OperatorTok{=}\NormalTok{ val\_ds.remove\_columns([c }\ControlFlowTok{for}\NormalTok{ c }\KeywordTok{in}\NormalTok{ val\_ds.column\_names }\ControlFlowTok{if}\NormalTok{ c }\KeywordTok{not} \KeywordTok{in}\NormalTok{ keep\_cols]).with\_format(}\StringTok{\textquotesingle{}torch\textquotesingle{}}\NormalTok{)}
+\NormalTok{    eval\_ds  }\OperatorTok{=}\NormalTok{ eval\_ds.remove\_columns([c }\ControlFlowTok{for}\NormalTok{ c }\KeywordTok{in}\NormalTok{ eval\_ds.column\_names }\ControlFlowTok{if}\NormalTok{ c }\KeywordTok{not} \KeywordTok{in}\NormalTok{ keep\_cols]).with\_format(}\StringTok{\textquotesingle{}torch\textquotesingle{}}\NormalTok{)}
+
+
+
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+    \CommentTok{\# Kepe only the necessary columns in each dataset}
+    \CommentTok{\#keep\_cols = [\textquotesingle{}input\_ids\textquotesingle{}, \textquotesingle{}attention\_mask\textquotesingle{}, \textquotesingle{}labels\textquotesingle{}]}
+    \CommentTok{\#train\_ds = train\_ds.remove\_columns([c for c in train\_ds.column\_names if c not in keep\_cols]).with\_format(\textquotesingle{}torch\textquotesingle{})}
+    \CommentTok{\#val\_ds = val\_ds.remove\_columns([c for c in val\_ds.column\_names if c not in keep\_cols]).with\_format(\textquotesingle{}torch\textquotesingle{})}
+    \CommentTok{\#test\_ds = test\_ds.remove\_columns([c for c in test\_ds.column\_names if c not in keep\_cols]).with\_format(\textquotesingle{}torch\textquotesingle{})}
+
+    \CommentTok{\# We\textquotesingle{}ll create models inside the grid loop; keep tokenizer ready}
+
+    \CommentTok{\# Device selection: prefer CUDA, then Apple MPS, then CPU}
+    \ControlFlowTok{if} \BuiltInTok{hasattr}\NormalTok{(torch, }\StringTok{\textquotesingle{}cuda\textquotesingle{}}\NormalTok{) }\KeywordTok{and}\NormalTok{ torch.cuda.is\_available():}
+\NormalTok{        device }\OperatorTok{=} \StringTok{\textquotesingle{}cuda\textquotesingle{}}
+    \ControlFlowTok{else}\NormalTok{:}
+        \ControlFlowTok{try}\NormalTok{:}
+            \ControlFlowTok{if} \BuiltInTok{getattr}\NormalTok{(torch, }\StringTok{\textquotesingle{}has\_mps\textquotesingle{}}\NormalTok{, }\VariableTok{False}\NormalTok{) }\KeywordTok{and}\NormalTok{ torch.backends.mps.is\_available():}
+\NormalTok{                device }\OperatorTok{=} \StringTok{\textquotesingle{}mps\textquotesingle{}}
+            \ControlFlowTok{else}\NormalTok{:}
+\NormalTok{                device }\OperatorTok{=} \StringTok{\textquotesingle{}cpu\textquotesingle{}}
+        \ControlFlowTok{except} \PreprocessorTok{Exception}\NormalTok{:}
+\NormalTok{            device }\OperatorTok{=} \StringTok{\textquotesingle{}cpu\textquotesingle{}}
+
+\NormalTok{    no\_cuda }\OperatorTok{=} \VariableTok{False} \ControlFlowTok{if}\NormalTok{ device }\KeywordTok{in}\NormalTok{ (}\StringTok{\textquotesingle{}cuda\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}mps\textquotesingle{}}\NormalTok{) }\ControlFlowTok{else} \VariableTok{True}
+
+    \CommentTok{\# Note: model instances are created per{-}trial inside the grid search loop below.}
+
+    \CommentTok{\# Grid search over learning rate (no focal gamma needed)}
+\NormalTok{    best\_score }\OperatorTok{=} \OperatorTok{{-}}\BuiltInTok{float}\NormalTok{(}\StringTok{\textquotesingle{}inf\textquotesingle{}}\NormalTok{)}
+\NormalTok{    best\_params }\OperatorTok{=} \VariableTok{None}
+
+    \CommentTok{\# Q4: Implement grid search for at least one hyperparameter}
+
+    \CommentTok{\# Build hyperparameter lists}
+\NormalTok{    best\_params }\OperatorTok{=} \VariableTok{None}
+\NormalTok{    best\_score }\OperatorTok{=} \OperatorTok{{-}}\BuiltInTok{float}\NormalTok{(}\StringTok{\textquotesingle{}inf\textquotesingle{}}\NormalTok{)}
+
+    \ControlFlowTok{if}\NormalTok{ args.grid\_search:}
+\NormalTok{        lrs }\OperatorTok{=}\NormalTok{ [}\FloatTok{0.001}\NormalTok{, }\FloatTok{0.0001}\NormalTok{]}
+\NormalTok{        bss }\OperatorTok{=}\NormalTok{ [}\DecValTok{8}\NormalTok{,}\DecValTok{32}\NormalTok{]}
+\NormalTok{        wds }\OperatorTok{=}\NormalTok{ [}\FloatTok{0.0}\NormalTok{, }\FloatTok{0.03}\NormalTok{]}
+\NormalTok{        nes }\OperatorTok{=}\NormalTok{ [}\DecValTok{1}\NormalTok{, }\DecValTok{3}\NormalTok{]}
+\NormalTok{        search\_space }\OperatorTok{=}\NormalTok{ itertools.product(lrs, bss, wds, nes)}
+    \ControlFlowTok{else}\NormalTok{:}
+\NormalTok{        search\_space }\OperatorTok{=}\NormalTok{ [(args.learning\_rate, args.batch\_size, args.weight\_decay, args.num\_train\_epochs)]}
+
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}1{-}7 lines)}
+
+
+\NormalTok{    device }\OperatorTok{=}\NormalTok{ torch.device(}\StringTok{\textquotesingle{}cuda\textquotesingle{}} \ControlFlowTok{if}\NormalTok{ torch.cuda.is\_available() }\ControlFlowTok{else} \StringTok{\textquotesingle{}cpu\textquotesingle{}}\NormalTok{)}
+
+
+    \CommentTok{\# PRO TIP: you can use itertools.product to create a master list of all combos for grid search}
+
+    \ControlFlowTok{for}\NormalTok{ lr, bs, wd, ne }\KeywordTok{in}\NormalTok{ search\_space:}\CommentTok{\# COMPLETE THIS LINE}
+\NormalTok{        logger.info(}\SpecialStringTok{f"Trial: lr=}\SpecialCharTok{\{}\NormalTok{lr}\SpecialCharTok{\}}\SpecialStringTok{, bs=}\SpecialCharTok{\{}\NormalTok{bs}\SpecialCharTok{\}}\SpecialStringTok{, wd=}\SpecialCharTok{\{}\NormalTok{wd}\SpecialCharTok{\}}\SpecialStringTok{, epochs=}\SpecialCharTok{\{}\NormalTok{ne}\SpecialCharTok{\}}\SpecialStringTok{"}\NormalTok{)}
+
+        \CommentTok{\# instantiate fresh pretrained model for each trial}
+        \CommentTok{\# }\AlertTok{NOTE}\CommentTok{: if num\_labels=2, CrossEntropy is assumed by default Trainer;}
+        \CommentTok{\# if num\_labels=1, you will have to implement a CustomTrainer to override MSE as loss}
+\NormalTok{        model }\OperatorTok{=}\NormalTok{ DistilBertForSequenceClassification.from\_pretrained(}
+\NormalTok{        args.model\_name, num\_labels}\OperatorTok{=}\DecValTok{2}
+\NormalTok{    )}
+
+        \CommentTok{\# Freeze base params and unfreeze classifier layers}
+        \ControlFlowTok{for}\NormalTok{ name, p }\KeywordTok{in}\NormalTok{ model.named\_parameters():}
+\NormalTok{            p.requires\_grad }\OperatorTok{=} \VariableTok{False}
+        \ControlFlowTok{for}\NormalTok{ name, p }\KeywordTok{in}\NormalTok{ model.named\_parameters():}
+            \ControlFlowTok{if}\NormalTok{ name.startswith(}\StringTok{\textquotesingle{}classifier\textquotesingle{}}\NormalTok{) }\KeywordTok{or} \StringTok{\textquotesingle{}pre\_classifier\textquotesingle{}} \KeywordTok{in}\NormalTok{ name:}
+\NormalTok{                p.requires\_grad }\OperatorTok{=} \VariableTok{True}
+
+        \CommentTok{\# trial output dir}
+\NormalTok{        trial\_output\_dir }\OperatorTok{=}\NormalTok{ os.path.join(args.output\_dir, }\SpecialStringTok{f\textquotesingle{}CHOOSE\_EXP\_NAME\textquotesingle{}}\NormalTok{)}
+\NormalTok{        os.makedirs(trial\_output\_dir, exist\_ok}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+
+\NormalTok{        training\_args }\OperatorTok{=}\NormalTok{ TrainingArguments(}
+\NormalTok{            output\_dir}\OperatorTok{=}\NormalTok{trial\_output\_dir,}
+\NormalTok{            per\_device\_train\_batch\_size}\OperatorTok{=}\NormalTok{bs,}
+\NormalTok{            per\_device\_eval\_batch\_size}\OperatorTok{=}\NormalTok{bs,}
+\NormalTok{            learning\_rate}\OperatorTok{=}\NormalTok{lr,}
+\NormalTok{            num\_train\_epochs}\OperatorTok{=}\NormalTok{ne,}
+\NormalTok{            weight\_decay}\OperatorTok{=}\NormalTok{wd,}
+\NormalTok{            logging\_dir}\OperatorTok{=}\NormalTok{os.path.join(trial\_output\_dir, }\StringTok{"logs"}\NormalTok{),  }\CommentTok{\# safe on old \& new}
+\NormalTok{        )}
+
+        \CommentTok{\# initialize the Trainer (\textasciitilde{}5 lines) or CustomTrainer (\textasciitilde{}6{-}8 lines)}
+\NormalTok{        trainer }\OperatorTok{=}\NormalTok{ Trainer(}
+\NormalTok{        model}\OperatorTok{=}\NormalTok{model,}
+\NormalTok{        args}\OperatorTok{=}\NormalTok{training\_args,}
+\NormalTok{        train\_dataset}\OperatorTok{=}\NormalTok{train\_ds,}
+\NormalTok{        eval\_dataset}\OperatorTok{=}\NormalTok{val\_ds,}
+\NormalTok{        compute\_metrics}\OperatorTok{=}\NormalTok{compute\_metrics\_debug}
+     \CommentTok{\# COMPLETE THIS LINE}
+\NormalTok{        )}
+\NormalTok{        model.to(device)}
+        \CommentTok{\# move model to device if possible}
+        \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}1{-}4 lines)}
+\NormalTok{        trainer.train()}
+\NormalTok{        metrics }\OperatorTok{=}\NormalTok{ trainer.evaluate(eval\_dataset}\OperatorTok{=}\NormalTok{val\_ds)}
+\NormalTok{        score }\OperatorTok{=}\NormalTok{ metrics.get(}\StringTok{\textquotesingle{}eval\_f1\textquotesingle{}}\NormalTok{, }\OperatorTok{{-}}\BuiltInTok{float}\NormalTok{(}\StringTok{\textquotesingle{}inf\textquotesingle{}}\NormalTok{))}
+
+
+        \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+        \CommentTok{\# train, evaluate, compute score, update best score}
+        \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}6{-}9 lines)}
+        \ControlFlowTok{if}\NormalTok{ score }\OperatorTok{\textgreater{}}\NormalTok{ best\_score:}
+\NormalTok{            best\_score }\OperatorTok{=}\NormalTok{ score}
+\NormalTok{            best\_params }\OperatorTok{=}\NormalTok{ \{}\StringTok{\textquotesingle{}lr\textquotesingle{}}\NormalTok{: lr, }\StringTok{\textquotesingle{}bs\textquotesingle{}}\NormalTok{: bs, }\StringTok{\textquotesingle{}wd\textquotesingle{}}\NormalTok{: wd, }\StringTok{\textquotesingle{}epochs\textquotesingle{}}\NormalTok{: ne\}}
+            \BuiltInTok{print}\NormalTok{()}
+        \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+    \ControlFlowTok{if}\NormalTok{ best\_params }\KeywordTok{is} \VariableTok{None}\NormalTok{:}
+        \ControlFlowTok{raise} \PreprocessorTok{RuntimeError}\NormalTok{(}\StringTok{\textquotesingle{}Grid search failed to produce any candidate best params\textquotesingle{}}\NormalTok{)}
+
+\NormalTok{    logger.info(best\_params)}
+
+        \CommentTok{\# Q5: Final training on train+val with best hyperparameters}
+    \CommentTok{\# instantiate pretrained model and freeze appropriate layers}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}6 lines)}
+\NormalTok{    model }\OperatorTok{=}\NormalTok{ DistilBertForSequenceClassification.from\_pretrained(args.model\_name, num\_labels}\OperatorTok{=}\DecValTok{2}\NormalTok{)}
+
+    \ControlFlowTok{for}\NormalTok{ name, p }\KeywordTok{in}\NormalTok{ model.named\_parameters():}
+\NormalTok{        p.requires\_grad }\OperatorTok{=} \VariableTok{False}
+    \ControlFlowTok{for}\NormalTok{ name, p }\KeywordTok{in}\NormalTok{ model.named\_parameters():}
+        \ControlFlowTok{if}\NormalTok{ name.startswith(}\StringTok{\textquotesingle{}classifier\textquotesingle{}}\NormalTok{) }\KeywordTok{or} \StringTok{\textquotesingle{}pre\_classifier\textquotesingle{}} \KeywordTok{in}\NormalTok{ name:}
+\NormalTok{            p.requires\_grad }\OperatorTok{=} \VariableTok{True}
+
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HE RE}
+
+    \CommentTok{\# combine train\_ds and val\_df for final training (i.e., original train\_df)}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}4 lines)}
+    \ImportTok{from}\NormalTok{ datasets }\ImportTok{import}\NormalTok{ concatenate\_datasets}
+\NormalTok{    trainval\_ds }\OperatorTok{=}\NormalTok{ concatenate\_datasets([train\_ds, val\_ds]).with\_format(}\StringTok{\textquotesingle{}torch\textquotesingle{}}\NormalTok{)}
+\NormalTok{    final\_out\_dir }\OperatorTok{=}\NormalTok{ os.path.join(args.output\_dir, }\StringTok{\textquotesingle{}final\textquotesingle{}}\NormalTok{)}
+\NormalTok{    os.makedirs(final\_out\_dir, exist\_ok}\OperatorTok{=}\VariableTok{True}\NormalTok{)}
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+    \CommentTok{\# set the training arguments}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}9{-}14 lines)}
+\NormalTok{    final\_args }\OperatorTok{=}\NormalTok{ TrainingArguments(}
+\NormalTok{        output\_dir}\OperatorTok{=}\NormalTok{final\_out\_dir,}
+\NormalTok{        per\_device\_train\_batch\_size}\OperatorTok{=}\NormalTok{best\_params[}\StringTok{\textquotesingle{}bs\textquotesingle{}}\NormalTok{],}
+\NormalTok{        per\_device\_eval\_batch\_size}\OperatorTok{=}\NormalTok{best\_params[}\StringTok{\textquotesingle{}bs\textquotesingle{}}\NormalTok{],}
+\NormalTok{        learning\_rate}\OperatorTok{=}\NormalTok{best\_params[}\StringTok{\textquotesingle{}lr\textquotesingle{}}\NormalTok{],}
+\NormalTok{        num\_train\_epochs}\OperatorTok{=}\NormalTok{best\_params[}\StringTok{\textquotesingle{}epochs\textquotesingle{}}\NormalTok{],}
+\NormalTok{        weight\_decay}\OperatorTok{=}\NormalTok{best\_params[}\StringTok{\textquotesingle{}wd\textquotesingle{}}\NormalTok{],}
+\NormalTok{        logging\_dir}\OperatorTok{=}\NormalTok{os.path.join(final\_out\_dir, }\StringTok{"logs"}\NormalTok{),}
+\NormalTok{    )}
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+    \CommentTok{\# initialize the Trainer (\textasciitilde{}5 lines) or CustomTrainer (\textasciitilde{}6{-}8 lines)}
+\NormalTok{    final\_trainer }\OperatorTok{=}\NormalTok{ Trainer(}
+\NormalTok{        model}\OperatorTok{=}\NormalTok{model,}
+\NormalTok{        args}\OperatorTok{=}\NormalTok{final\_args,}
+\NormalTok{        train\_dataset}\OperatorTok{=}\NormalTok{trainval\_ds,}
+\NormalTok{        eval\_dataset}\OperatorTok{=}\NormalTok{eval\_ds,          }\CommentTok{\# held{-}out test split}
+\NormalTok{        compute\_metrics}\OperatorTok{=}\NormalTok{compute\_metrics\_debug}
+\NormalTok{    )}
+
+\NormalTok{    final\_trainer.train()}
+\NormalTok{    test\_metrics }\OperatorTok{=}\NormalTok{ final\_trainer.evaluate(eval\_dataset}\OperatorTok{=}\NormalTok{eval\_ds)}
+\NormalTok{    logger.info(}\SpecialStringTok{f\textquotesingle{}Final TEST metrics: }\SpecialCharTok{\{}\NormalTok{test\_metrics}\SpecialCharTok{\}}\SpecialStringTok{\textquotesingle{}}\NormalTok{)}
+    \BuiltInTok{print}\NormalTok{(}\StringTok{"FINAL TEST METRICS (Q5 Results):"}\NormalTok{)}
+    \ControlFlowTok{for}\NormalTok{ key, value }\KeywordTok{in}\NormalTok{ test\_metrics.items():}
+      \BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"}\SpecialCharTok{\{}\NormalTok{key}\SpecialCharTok{\}}\SpecialStringTok{: }\SpecialCharTok{\{}\NormalTok{value}\SpecialCharTok{:.4f\}}\SpecialStringTok{"}\NormalTok{)}
+    
+\NormalTok{    final\_trainer.save\_model(args.output\_dir)}
+    \CommentTok{\# move model to device if possible}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}1{-}4 lines)}
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+    \CommentTok{\# train, evaluate, save model}
+    \CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}3 lines)}
+    \CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+\NormalTok{    trainer.train()}
+\NormalTok{    trainer.save\_model(args.output\_dir)}
+    \ControlFlowTok{return}\NormalTok{ test\_metrics}
+
+
+
+
+\CommentTok{\# if \_\_name\_\_ == \textquotesingle{}\_\_main\_\_\textquotesingle{}:}
+\NormalTok{parser }\OperatorTok{=}\NormalTok{ argparse.ArgumentParser()}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}data{-}dir\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{str}\NormalTok{, required}\OperatorTok{=}\VariableTok{True}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}Path to CSV with tweet\_text and claim columns\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}output{-}dir\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{str}\NormalTok{, default}\OperatorTok{=}\StringTok{\textquotesingle{}finetuned\textquotesingle{}}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}Where to save model and tokenizer\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}model{-}name\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{str}\NormalTok{, default}\OperatorTok{=}\StringTok{\textquotesingle{}distilbert{-}base{-}uncased\textquotesingle{}}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}Pretrained model name\textquotesingle{}}\NormalTok{)}
+\CommentTok{\# Q1. Add relevant arguments}
+
+
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}max{-}length\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{int}\NormalTok{, default}\OperatorTok{=}\DecValTok{128}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}max number of tolkens\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}num{-}train{-}epochs\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{int}\NormalTok{, default}\OperatorTok{=}\DecValTok{3}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}total number of epochs to run through\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}weight{-}decay\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{float}\NormalTok{, default}\OperatorTok{=}\FloatTok{0.01}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}weight decay strength\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}grid{-}search\textquotesingle{}}\NormalTok{, action}\OperatorTok{=}\StringTok{\textquotesingle{}store\_true\textquotesingle{}}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}do a grid search with hyperparameters\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}val{-}size\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{float}\NormalTok{, default}\OperatorTok{=}\FloatTok{0.15}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}portion of data reserved for validation set\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}test{-}size\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{float}\NormalTok{, default}\OperatorTok{=}\FloatTok{0.15}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}portion of data reserved for tests\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}seed\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{int}\NormalTok{, default}\OperatorTok{=}\DecValTok{42}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}Random seed\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}eval{-}steps\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{int}\NormalTok{, default}\OperatorTok{=}\DecValTok{100}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}evaluate evcery n amount of steps\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}logging{-}steps\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{int}\NormalTok{, default}\OperatorTok{=}\DecValTok{50}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}how loften to log metrics\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}batch{-}size\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{int}\NormalTok{, default}\OperatorTok{=}\DecValTok{16}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}number of samples processed per device\textquotesingle{}}\NormalTok{)}
+\NormalTok{parser.add\_argument(}\StringTok{\textquotesingle{}{-}{-}learning{-}rate\textquotesingle{}}\NormalTok{, }\BuiltInTok{type}\OperatorTok{=}\BuiltInTok{float}\NormalTok{, default}\OperatorTok{=}\FloatTok{2e{-}5}\NormalTok{, }\BuiltInTok{help}\OperatorTok{=}\StringTok{\textquotesingle{}learning rate for the optimizer\textquotesingle{}}\NormalTok{)}
+
+
+\CommentTok{\# }\RegionMarkerTok{BEGIN}\CommentTok{ YOUR CODE HERE (\textasciitilde{}5{-}15 lines)}
+\CommentTok{\# }\RegionMarkerTok{END}\CommentTok{ YOUR CODE HERE}
+
+\NormalTok{args }\OperatorTok{=}\NormalTok{ parser.parse\_args([}\StringTok{\textquotesingle{}{-}{-}data{-}dir\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}data\textquotesingle{}}\NormalTok{, }\StringTok{\textquotesingle{}{-}{-}grid{-}search\textquotesingle{}}\NormalTok{])}
+
+\BuiltInTok{print}\NormalTok{(args)}
+
+\CommentTok{\# download file if it doesn\textquotesingle{}t exist yet}
+\NormalTok{download\_data(args)}
+
+\CommentTok{\# load pre{-}trained and finetune}
+\NormalTok{test\_metrics }\OperatorTok{=}\NormalTok{ load\_pretrained\_and\_finetune(args)}
+
+
+
+\CommentTok{\#| label: prob3}
+
+\NormalTok{accuracy }\OperatorTok{=}\NormalTok{ test\_metrics.get(}\StringTok{\textquotesingle{}eval\_accuracy\textquotesingle{}}\NormalTok{, }\DecValTok{0}\NormalTok{)}
+\NormalTok{f1 }\OperatorTok{=}\NormalTok{ test\_metrics.get(}\StringTok{\textquotesingle{}eval\_f1\textquotesingle{}}\NormalTok{, }\DecValTok{0}\NormalTok{)}
+\NormalTok{precision }\OperatorTok{=}\NormalTok{ test\_metrics.get(}\StringTok{\textquotesingle{}eval\_precision\textquotesingle{}}\NormalTok{, }\DecValTok{0}\NormalTok{)}
+\NormalTok{recall }\OperatorTok{=}\NormalTok{ test\_metrics.get(}\StringTok{\textquotesingle{}eval\_recall\textquotesingle{}}\NormalTok{, }\DecValTok{0}\NormalTok{)}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"MODEL PERFORMANCE:"}\NormalTok{)}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"   Accuracy: }\SpecialCharTok{\{}\NormalTok{accuracy}\SpecialCharTok{:.2\%\}}\SpecialStringTok{"}\NormalTok{)}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"   F1 Score: }\SpecialCharTok{\{}\NormalTok{f1}\SpecialCharTok{:.4f\}}\SpecialStringTok{"}\NormalTok{)}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"   Precision: }\SpecialCharTok{\{}\NormalTok{precision}\SpecialCharTok{:.4f\}}\SpecialStringTok{"}\NormalTok{)}
+\BuiltInTok{print}\NormalTok{(}\SpecialStringTok{f"   Recall: }\SpecialCharTok{\{}\NormalTok{recall}\SpecialCharTok{:.4f\}}\SpecialStringTok{"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\phantomsection\label{prob3}
+\begin{verbatim}
+MODEL PERFORMANCE:
+   Accuracy: 87.45%
+   F1 Score: 0.4769
+   Precision: 0.7708
+   Recall: 0.5049
+\end{verbatim}
+
+\subsubsection{Q6}\label{q6}
+
+Accuracy 87.45\%, above 60\% target. F1 = 0.4769 (\textless0.50) due to
+imbalance between precision (0.7708) and recall (0.5049). High
+precision, low recall meaning conservative positive predictions; catches
+true medical tweets but misses many. Common in imbalanced datasets with
+dominant negative class.
+
+Challenges: strong class imbalance (few medical tweets), noisy text
+(hashtags, slang, abbreviations), limited training (3 epochs per grid
+search config). Only classification head trained---base model frozen,
+limiting domain adaptation.
+
+Improvements: add class weights, use focal loss, train longer (5--10
+epochs), unfreeze more layers, augment minority data, tune threshold
+(\textless0.5), or switch to larger model (e.g., BERT). Grid search
+tested 16 setups; best config used for final combined train+val
+training.
+
 \begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
 
 \section{4 NOT PART OF HW4: Tensor Shapes in a Transformer Layer {[}0
